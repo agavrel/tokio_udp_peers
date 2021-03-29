@@ -16,7 +16,7 @@ path = "src/client/bin/main.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "1.4", features = ["full", "tracing"] }
+tokio = { version = "1.4", features = ["full", "tracing", "time"] }
 tiny-keccak = { version = "2.0", features = ["sha3"] } # https://lib.rs/crates/tiny-keccak
 ring = { version = "0.16.20"}
 sodiumoxide = { version = "0.2.6"}

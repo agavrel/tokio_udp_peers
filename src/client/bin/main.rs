@@ -3,7 +3,7 @@
 use std::env;
 use std::error::Error;
 use std::io;
-use std::io::{stdin, Read};
+use std::io::Read;
 use std::net::SocketAddr;
 use tokio::net::UdpSocket;
 
@@ -40,11 +40,12 @@ pub fn get_chunks_from_file(
     Ok(list_of_chunks)
 }
 
+/*
 fn get_stdin_data() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut buf = Vec::new();
     stdin().read_to_end(&mut buf)?;
     Ok(buf)
-}
+}*/
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -100,6 +101,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                     index += 1;
                 }
+                //let mut buffer = [0u16; index];
             }
             Err(ref e) => println!("Error: {}", e),
         }
@@ -111,16 +113,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         unsafe {
                             let missing_indexes: Vec<u16> =
                                 (buffer[..size].align_to::<u16>().1).to_vec();
+                                println!("{:?}", missing_indexes);
                             let header2: &mut [u8; 4] =
                                 &mut [0, 0, (nb >> 8) as u8, (nb & 0xff) as u8];
-                            for missing_index in missing_indexes.iter() {
-                                let index = missing_index >> 8 | (missing_index & 0xff) << 8; // need to switch bytes because of little endian
-                                println!("Chunk {} not received by peer, resending...", index);
-                                header2[0] = (index >> 8) as u8; // 0xFF..
-                                header2[1] = (index & 0xff) as u8; // 0x..FF
-                                let missing_chunk = &chunks[index as usize];
-                                let data: Vec<u8> = [header2.as_ref(), missing_chunk].concat();
-                                socket.send(&data).await?; //.expect("Failed to write to server");
+                            for (i, missing_index) in missing_indexes.iter().enumerate() {
+                               // let index = missing_index >> 8 | (missing_index & 0xff) << 8; // need to switch bytes because of little endian
+                                if missing_index != &1u16 { // chunk was received
+                                    println!("Chunk {} not received by peer, resending...", i);
+                                    header2[0] = (i >> 8) as u8; // 0xFF..
+                                    header2[1] = (i & 0xff) as u8; // 0x..FF
+                                    let missing_chunk = &chunks[i];
+                                    let data: Vec<u8> = [header2.as_ref(), missing_chunk].concat();
+                                    socket.send(&data).await?; //.expect("Failed to write to server");
+                                }
                             }
                         }
                     }
@@ -152,5 +157,4 @@ async fn main() -> Result<(), Box<dyn Error>> {
             );
         */
     }
-    Ok(())
 }
