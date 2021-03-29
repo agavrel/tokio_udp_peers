@@ -1,0 +1,41 @@
+[package]
+name = "experiment"
+version = "0.1.0"
+authors = ["agavrel <gavrel.antonin@gmail.com>"]
+edition = "2018"
+
+
+[[bin]]
+name = "server"
+path = "src/server/bin/main.rs"
+
+[[bin]]
+name = "client"
+path = "src/client/bin/main.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.4", features = ["full", "tracing"] }
+tiny-keccak = { version = "2.0", features = ["sha3"] } # https://lib.rs/crates/tiny-keccak
+ring = { version = "0.16.20"}
+sodiumoxide = { version = "0.2.6"}
+#phf = { version = "0.7.24", features = ["macros"] } # generate map at compile time
+
+# By default optimizations (opt-level) will be level 3 for benchmarking and release, and 0 for the rest
+
+[profile.dev] # for the development profile, used by default in cargo build or cargo run
+codegen-units = 32 # compile faster
+opt-level = 0
+debug-assertions = true # true by default
+
+[profile.release] # for the release profile, used in cargo build --release or cargo run --release
+lto = true # will double compilation but gain very little perf
+opt-level = 3 # max, default value for release
+
+[profile.test] # for the testing profile, used in cargo test
+debug = true # include extra debug symbols in the final binary, false by default
+opt-level = 2
+debug-assertions = true # true by default
+
+[profile.bench] # for the benchmarking profile, used in cargo bench
