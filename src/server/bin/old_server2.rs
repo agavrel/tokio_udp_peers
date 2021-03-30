@@ -11,11 +11,11 @@ use sodiumoxide::randombytes::randombytes;
 
 use std::io::prelude::*;
 
-use std::alloc::{alloc, dealloc, Layout};
 use std::fs::File;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::alloc::{alloc, dealloc, Layout};
 use std::mem;
 use std::mem::MaybeUninit;
-use std::net::SocketAddr;
 #[allow(warnings)]
 const UDP_HEADER: usize = 8;
 const IP_HEADER: usize = 20;
@@ -114,7 +114,7 @@ struct Server {
 }
 
 impl Server {
-    async fn run(self) {
+    async fn run(self) -> Result<(), io::Error> {
         let Server { socket, mut to_send } = self;
         let mut missing_indexes: Vec<u16> = Vec::new();
         let mut peer_addr = MaybeUninit::<SocketAddr>::uninit();
@@ -122,15 +122,16 @@ impl Server {
         let mut len: usize = 0; // total len of bytes that will be written
         let filename = "3.m4a";
         let mut layout = MaybeUninit::<Layout>::uninit();
+        let mut buf = [0u8; MAX_DATA_LENGTH];
       //  let mut start = false;
         let key_bytes: Vec<u8> = randombytes(0x20);
         let key = generate_key(key_bytes);
-        let mut buf = [0u8; MAX_DATA_LENGTH];
-        let mut start = false;
-        let (debounce_tx, mut debounce_rx) = mpsc::channel::<(usize, SocketAddr)>(3300);
-        let (network_tx, mut network_rx) = mpsc::channel::<(usize, SocketAddr)>(3300);
 
-        loop {
+
+            let mut start = false;
+            let (debounce_tx, mut debounce_rx) = mpsc::channel::<(usize, SocketAddr)>(3300);
+            let (network_tx, mut network_rx) = mpsc::channel::<(usize, SocketAddr)>(3300);
+
             // Listen for events
             let debouncer = task::spawn(async move {
                 let duration = Duration::from_millis(3300);
@@ -140,6 +141,43 @@ impl Server {
                         Ok(Some((size, peer))) => {
                             eprintln!("Network activity");
                             start = true;
+
+                            //println!("receiving packet {} from: {}", size, peer);
+                            //let amt = socket.send_to(&buf[..size], &peer).await?;
+
+                            /*
+                            let packet_index: u16 = (buf[0] as u16) << 8 | buf[1] as u16;
+
+                            if start == false {
+                                start = true;
+                                let chunks_cnt: u32 = (buf[2] as u32) << 8 | buf[3] as u32;
+                                let n: usize =
+                                    MAX_DATAGRAM_SIZE << next_power_of_two_exponent(chunks_cnt);
+                                debug_assert_eq!(n.count_ones(), 1); // can check with this function that n is aligned on power of 2
+                                unsafe {
+                                    // SAFETY: layout.as_mut_ptr() is valid for writing and properly aligned
+                                    // SAFETY: align_of<u8>() is nonzero and a power of two thanks to previous function
+                                    // SAFETY: no shift amount will make 0x10000 << x round up to usize::MAX
+                                    layout.as_mut_ptr().write(Layout::from_size_align_unchecked(
+                                        n,
+                                        mem::align_of::<u8>(),
+                                    ));
+                                    // SAFETY: layout is initialized right before calling assume_init()
+                                    data = alloc(layout.assume_init());
+                                    peer_addr.as_mut_ptr().write(peer);
+                                }
+                                let a: Vec<u16> = vec![0; chunks_cnt as usize]; //(0..chunks_cnt).map(|x| x as u16).collect(); // create a sorted vector with all the required indexes
+                                missing_indexes = a;
+                            }
+                            missing_indexes[packet_index as usize] = 1;
+
+                            unsafe {
+                                let dst_ptr =
+                                    data.offset((packet_index as usize * MAX_CHUNK_SIZE) as isize);
+                                memcpy(dst_ptr, &buf[AG_HEADER], size - AG_HEADER);
+                            };
+                            println!("receiving packet {} from: {}", packet_index, peer);
+                            */
                         }
                         Ok(None) => {
                             if start == true {
@@ -149,12 +187,16 @@ impl Server {
                         }
                         Err(_) => {
                             eprintln!("{:?} since network activity", duration);
+
+                            // TODO: request missing indexes or create file
+
+                            /*
                             if missing_indexes.contains(&0) {
                                 unsafe {
                                     let missing_chunks = missing_indexes.align_to::<u8>().1; // convert from u16 to u8
                                     let amt =
                                         socket.send_to(&*missing_chunks, &peer_addr.assume_init()).await;
-                                    //println!("Echoed {} bytes back {:?}", amt, missing_indexes);
+                                   // println!("Echoed {} bytes back {:?}", amt, missing_indexes);
                                     // sock.send_to(&missing_chunks, &peer_addr.assume_init())
                                     //   .expect("Failed to send a response");
                                 }
@@ -186,70 +228,97 @@ impl Server {
                                     dealloc(data, layout.assume_init());
                                 }
                             }
+
+                            */
                         }
                     }
                 }
             });
-            //   println!("ha");
+            println!("hello");
             // Listen for network activity
             let server = task::spawn({
                 let debounce_tx = debounce_tx.clone();
                 async move {
                     while let Some((size, peer)) = network_rx.recv().await {
                         // Received a packet
-
+                        println!("hello");
                         debounce_tx.send((size, peer)).await.expect("Unable to talk to debounce");
                         eprintln!("Received a packet {} from: {}", size, peer);
 
-                        let packet_index: u16 = (buf[0] as u16) << 8 | buf[1] as u16;
+                        // TODO: Replace with below
+                        /*
 
-                        if start == false { // initialize
-                            start = true;
-                            let chunks_cnt: u32 = (buf[2] as u32) << 8 | buf[3] as u32;
-                            let n: usize = MAX_DATAGRAM_SIZE << next_power_of_two_exponent(chunks_cnt);
-                            debug_assert_eq!(n.count_ones(), 1); // can check with this function that n is aligned on power of 2
-                            unsafe {
-                                // SAFETY: layout.as_mut_ptr() is valid for writing and properly aligned
-                                // SAFETY: align_of<u8>() is nonzero and a power of two thanks to previous function
-                                // SAFETY: no shift amount will make 0x10000 << x round up to usize::MAX
-                                layout
-                                    .as_mut_ptr()
-                                    .write(Layout::from_size_align_unchecked(n, mem::align_of::<u8>()));
-                                // SAFETY: layout is initialized right before calling assume_init()
-                                data = alloc(layout.assume_init());
-                                peer_addr.as_mut_ptr().write(peer);
+                          if let Some((size, peer)) = to_send {
+                            //println!("receiving packet {} from: {}", size, peer);
+                            //let amt = socket.send_to(&buf[..size], &peer).await?;
+
+
+                            let packet_index: u16 = (buf[0] as u16) << 8 | buf[1] as u16;
+
+                            if start == false {
+                                start = true;
+                                let chunks_cnt: u32 = (buf[2] as u32) << 8 | buf[3] as u32;
+                                let n: usize = MAX_DATAGRAM_SIZE << next_power_of_two_exponent(chunks_cnt);
+                                debug_assert_eq!(n.count_ones(), 1); // can check with this function that n is aligned on power of 2
+                                unsafe {
+                                    // SAFETY: layout.as_mut_ptr() is valid for writing and properly aligned
+                                    // SAFETY: align_of<u8>() is nonzero and a power of two thanks to previous function
+                                    // SAFETY: no shift amount will make 0x10000 << x round up to usize::MAX
+                                    layout
+                                        .as_mut_ptr()
+                                        .write(Layout::from_size_align_unchecked(n, mem::align_of::<u8>()));
+                                    // SAFETY: layout is initialized right before calling assume_init()
+                                    data = alloc(layout.assume_init());
+                                    peer_addr.as_mut_ptr().write(peer);
+                                }
+                                let a: Vec<u16> = vec![0; chunks_cnt as usize]; //(0..chunks_cnt).map(|x| x as u16).collect(); // create a sorted vector with all the required indexes
+                                missing_indexes = a;
                             }
-                            let a: Vec<u16> = vec![0; chunks_cnt as usize]; //(0..chunks_cnt).map(|x| x as u16).collect(); // create a sorted vector with all the required indexes
-                            missing_indexes = a;
+                            missing_indexes[packet_index as usize] = 1;
+
+                            unsafe {
+                                let dst_ptr = data.offset((packet_index as usize * MAX_CHUNK_SIZE) as isize);
+                                memcpy(dst_ptr, &buf[AG_HEADER], size - AG_HEADER);
+                            };
+                            println!("receiving packet {} from: {}", packet_index, peer);
                         }
-                        missing_indexes[packet_index as usize] = 1;
-                        unsafe {
-                            let dst_ptr = data.offset((packet_index as usize * MAX_CHUNK_SIZE) as isize);
-                            memcpy(dst_ptr, &buf[AG_HEADER], size - AG_HEADER);
-                        };
-                        println!("receiving packet {} from: {}", packet_index, peer);
+
+                        */
                     }
                 }
             });
 
             // Prevent deadlocks
             drop(debounce_tx);
+            let socket =  SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127,0,0,1)), 8080);
+            network_tx.send((1,socket)).await.expect("Unable to talk to network");
 
-            match socket.recv_from(&mut buf).await {
-                Ok((size, src)) => {
-                    network_tx.send((size, src)).await.expect("Unable to talk to network");
-                }
-                Err(e) => {
-                    eprintln!("couldn't recieve a datagram: {}", e);
-                }
-            }
-        }
-        // Close the network
-        // drop(network_tx);
-        // Wait for everything to finish
-        // server.await.expect("Server panicked");
-        // debouncer.await.expect("Debouncer panicked");
+/*
+            // Drive the network input
+            network_tx.send(1).await.expect("Unable to talk to network");
+            network_tx.send(2).await.expect("Unable to talk to network");
+            network_tx.send(3).await.expect("Unable to talk to network");
+
+            time::sleep(Duration::from_millis(320)).await;
+
+            network_tx.send(4).await.expect("Unable to talk to network");
+            network_tx.send(5).await.expect("Unable to talk to network");
+            network_tx.send(6).await.expect("Unable to talk to network");
+
+            time::sleep(Duration::from_millis(320)).await;
+*/
+            // Close the network
+            drop(network_tx);
+
+            // Wait for everything to finish
+            server.await.expect("Server panicked");
+            debouncer.await.expect("Debouncer panicked");
+
+
+             to_send = Some(socket.recv_from(&mut buf).await?);
+
     }
+
 }
 
 #[tokio::main]
@@ -262,7 +331,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     //    let server = Server { socket, buf: vec![0; 1024], to_send: None };
     let server = Server { socket, to_send: None };
     // This starts the server task.
-    server.run().await;
+    server.run().await?;
 
     Ok(())
 }
