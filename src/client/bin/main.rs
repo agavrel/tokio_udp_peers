@@ -14,10 +14,7 @@ const AG_HEADER: usize = 4;
 const MAX_DATA_LENGTH: usize = (64 * 1024 - 1) - UDP_HEADER - IP_HEADER;
 const MAX_CHUNK_SIZE: usize = MAX_DATA_LENGTH - AG_HEADER;
 
-pub fn get_chunks_from_file(
-    total_size: &mut usize,
-) -> Result<Vec<Vec<u8>>, io::Error> {
-
+pub fn get_chunks_from_file(total_size: &mut usize) -> Result<Vec<Vec<u8>>, io::Error> {
     let mut list_of_chunks = Vec::new();
     let data: Vec<u8> = randombytes(0x10000);
     *total_size += 0x10000;
@@ -25,7 +22,7 @@ pub fn get_chunks_from_file(
     loop {
         let mut chunk = Vec::with_capacity(0x1000);
         n -= 1;
-        chunk =  data[0..0x1000].to_vec();
+        chunk = data[0..0x1000].to_vec();
         //file.by_ref().take(MAX_CHUNK_SIZE as u64).read_to_end(&mut chunk)?;
         //let start:usize = if list_of_chunks.len() != 0 { 0 } else { 0x20 }; // skip header
 
@@ -43,7 +40,6 @@ fn get_stdin_data() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     stdin().read_to_end(&mut buf)?;
     Ok(buf)
 }*/
-
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -111,12 +107,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         unsafe {
                             let missing_indexes: Vec<u16> =
                                 (buffer[..size].align_to::<u16>().1).to_vec();
-                                println!("{:?}", missing_indexes);
+                            println!("{:?}", missing_indexes);
                             let header2: &mut [u8; 4] =
                                 &mut [0, 0, (nb >> 8) as u8, (nb & 0xff) as u8];
                             for (i, missing_index) in missing_indexes.iter().enumerate() {
-                               // let index = missing_index >> 8 | (missing_index & 0xff) << 8; // need to switch bytes because of little endian
-                                if missing_index != &1u16 { // chunk was received
+                                // let index = missing_index >> 8 | (missing_index & 0xff) << 8; // need to switch bytes because of little endian
+                                if missing_index != &1u16 {
+                                    // chunk was received
                                     println!("Chunk {} not received by peer, resending...", i);
                                     header2[0] = (i >> 8) as u8; // 0xFF..
                                     header2[1] = (i & 0xff) as u8; // 0x..FF

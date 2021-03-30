@@ -1,14 +1,27 @@
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
-use tokio::{sync::mpsc, task, time}; // 1.3.0
+use std::{env, io};
+use tokio::net::UdpSocket;
+use tokio::{sync::mpsc, task, time}; // 1.4.0
 
 #[tokio::main]
 async fn main() {
     // mpsc::channel(3000)::<(usize, SocketAddr)>(3300);
 
-    let mut start = false;
+    let addr = env::args().nth(1).unwrap_or_else(|| "127.0.0.1:8080".to_string());
+
+    let socket = UdpSocket::bind(&addr).await;
+    println!("Listening ");
 
     let (debounce_tx, mut debounce_rx) = mpsc::channel::<Vec<u8>>(3300); // mpsc::channel<Vec<u8>>(3300);
     let (network_tx, mut network_rx) = mpsc::channel::<Vec<u8>>(3300);
+    eprintln!("start");
+    if let Some(bytes) = network_rx.recv().await {
+        eprintln!("start");
+    }
+
+    let mut start = false;
+
     // Listen for events
     let debouncer = task::spawn(async move {
         let duration = Duration::from_millis(3000);
