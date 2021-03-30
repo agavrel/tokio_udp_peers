@@ -1,5 +1,4 @@
 use std::error::Error;
-
 use std::time::Duration;
 use std::{env, io};
 use tokio::net::UdpSocket;
@@ -17,7 +16,7 @@ use std::mem;
 use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::sync::Arc;
-#[allow(warnings)]
+
 const UDP_HEADER: usize = 8;
 const IP_HEADER: usize = 20;
 const AG_HEADER: usize = 4;
@@ -47,6 +46,7 @@ fn write_chunks_to_file(filename: &str, bytes: &[u8]) -> io::Result<()> {
 }
 
 // Thanks https://www.rosettacode.org/wiki/Extract_file_extension#Rust
+#[inline(always)]
 fn extension(filename: &str) -> &str {
     filename
         .rfind('.')
@@ -57,6 +57,7 @@ fn extension(filename: &str) -> &str {
 
 // https://en.wikipedia.org/wiki/List_of_file_signatures
 // NB: magic (number) means file signature
+#[inline(always)]
 fn is_file_extension_matching_magic(filename: &str, bytes: Vec<u8>) -> bool {
     const WILD: u8 = 0xFC; // unspecified byte, could be anything, just make sure
                            // that it is not one of the already used bytes among magic numbers
@@ -101,6 +102,7 @@ fn is_file_extension_matching_magic(filename: &str, bytes: Vec<u8>) -> bool {
     return false;
 }
 
+#[inline(always)]
 fn generate_key(random_bytes: Vec<u8>) -> Key {
     //fb gena(random_bytes: Vec<u8>)-> Key  {
     let option_key: Option<Key> = Key::from_slice(&random_bytes);
@@ -108,16 +110,8 @@ fn generate_key(random_bytes: Vec<u8>) -> Key {
     return key;
 }
 
-/*
-struct Server {
-    socket: UdpSocket,
-    // buf: Vec<u8>,
-    to_send: Option<(usize, SocketAddr)>,
-}
-*/
-
+#[inline(always)]
 async fn run_server(socket: UdpSocket) {
-    //   let Server { socket, mut to_send } = self;
     let mut missing_indexes: Vec<u16> = Vec::new();
     let mut peer_addr = MaybeUninit::<SocketAddr>::uninit();
     let mut data = std::ptr::null_mut(); // ptr for the file bytes
@@ -195,22 +189,19 @@ async fn run_server(socket: UdpSocket) {
                 }
             }
         });
-        //   println!("ha");
         // Listen for network activity
         let server = task::spawn({
             // async{
             let debounce_tx = debounce_tx.clone();
             async move {
                 while let Some((size, peer)) = network_rx.recv().await {
-                    // Received a packet
-
+                    // Received a new packet
                     debounce_tx.send((size, peer)).await.expect("Unable to talk to debounce");
                     eprintln!("Received a packet {} from: {}", size, peer);
 
                     let packet_index: u16 = (buf[0] as u16) << 8 | buf[1] as u16;
 
-                    if start == false {
-                        // initialize
+                    if start == false { // first bytes of a new file: initialization
                         start = true;
                         let chunks_cnt: u32 = (buf[2] as u32) << 8 | buf[3] as u32;
                         let n: usize = MAX_DATAGRAM_SIZE << next_power_of_two_exponent(chunks_cnt);
@@ -262,17 +253,8 @@ async fn run_server(socket: UdpSocket) {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let addr = env::args().nth(1).unwrap_or_else(|| "127.0.0.1:8080".to_string());
-
     let socket = UdpSocket::bind(&addr).await?;
     println!("Listening on: {}", socket.local_addr()?);
-
-    //    let server = Server { socket, buf: vec![0; 1024], to_send: None };
-
-    //let server = Server { socket, to_send: None };
-    // This starts the server task.
-    //server.run().await;
-
     run_server(socket);
-
     Ok(())
 }
