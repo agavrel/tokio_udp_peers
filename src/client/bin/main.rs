@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // We use port 0 to let the operating system allocate an available port for us.
     let local_addr: SocketAddr = if remote_addr.is_ipv4() {
-        "0.0.0.0:0" // "127.0.0.1:8000"//
+        "127.0.0.1:8000"// "0.0.0.0:0" //
     } else {
         "[::]:0"
     }
@@ -83,7 +83,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     header[0] = index as u8; // 0xFF..
                     let data: Vec<u8> = [header.as_ref(), chunk].concat();
                     // println!("Chunk {} BYTES\n {:?}", index, chunk);
-                    println!("Chunk {} sent", index);
+                    println!("Chunk {} with {} bytes sent", index, chunk.len());
                     /*     println!(
                         "size: {} FILE {:?} of {} BYTES\n {:?}",
                         total_size,
@@ -99,7 +99,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             Err(ref e) => println!("Error: {}", e),
         }
-
+        }
+/*
         match socket.recv_from(&mut buffer).await {
             Ok((size, _src)) => {
                 match result {
@@ -133,7 +134,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 eprintln!("couldn't read into buffer: {}", e);
             }
         }
-
+*/
         /*
             let mut data = String::new();
             io::stdin().read_line(&mut data).expect("Failed to read from stdin");
@@ -151,5 +152,5 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 String::from_utf8_lossy(&data[..len])
             );
         */
-    }
+   // }
 }
