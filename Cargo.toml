@@ -17,6 +17,7 @@ path = "src/client/bin/main.rs"
 
 [dependencies]
 rand = "0.8.0"
+net2 = {version = "0.2.37"}
 tokio = { version = "1.4", features = ["full", "tracing", "time", "net"] }
 tiny-keccak = { version = "2.0", features = ["sha3"] } # https://lib.rs/crates/tiny-keccak
 ring = { version = "0.16.20"}
