@@ -56,7 +56,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // We use port 0 to let the operating system allocate an available port for us.
     let local_addr: SocketAddr = if remote_addr.is_ipv4() {
-        "0.0.0.0:0" // "127.0.0.1:8000"//
+       "127.0.0.1:8000"// "0.0.0.0:0" //
     } else {
         "[::]:0"
     }
@@ -66,6 +66,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     //const MAX_DATAGRAM_SIZE: usize = 65_507;
     socket.connect(&remote_addr).await?;
+
 
     let mut buffer = [0u8; MAX_DATA_LENGTH];
     let mut nb = 0; // total number of chunks to be sent
@@ -103,13 +104,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
                 //let mut buffer = [0u16; index];
             }
-            Err(ref e) => println!("Error: {}", e),
+            Err(ref e) => eprintln!("Error: {}", e),
         }
 
         match socket.recv_from(&mut buffer).await {
+
+
+
             Ok((size, _src)) => {
                 match result {
                     Ok(ref chunks) => {
+                    println!("Listening on: {:?}", buffer[0..size].to_vec());
+
                         unsafe {
                             let missing_indexes: Vec<u16> =
                                 (buffer[..size].align_to::<u16>().1).to_vec();

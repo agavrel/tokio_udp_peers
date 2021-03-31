@@ -1,10 +1,8 @@
-
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::{sync::mpsc, task, time}; // 1.4.0
-
 
 use std::{env, io};
 
@@ -14,8 +12,8 @@ use sodiumoxide::randombytes::randombytes;
 
 use std::io::prelude::*;
 
-use std::fs::File;
 use std::alloc::{alloc, Layout};
+use std::fs::File;
 use std::mem;
 use std::mem::MaybeUninit;
 
@@ -110,6 +108,7 @@ fn generate_key(random_bytes: Vec<u8>) -> Key {
 }
 
 const ADDRESS: &str = "127.0.0.1:8080";
+const ADDRESS_OUT: &str = "127.0.0.1:8081";
 const ADDRESS_CLIENT: &str = "127.0.0.1:8000";
 
 #[tokio::main]
@@ -124,64 +123,72 @@ async fn main() {
 
 async fn server() {
     eprintln!("Starting the server");
-        let mut start:bool = false;
+    let mut start: bool = false;
 
     let addr = env::args().nth(1).unwrap_or_else(|| ADDRESS.to_string());
     let socket = UdpSocket::bind(&addr).await.unwrap();
- //   let sender = UdpSocket::bind(&addr).await.unwrap();
+    //   let sender = UdpSocket::bind(&addr).await.unwrap();
     let arc = Arc::new(socket);
     let mut buf = [0u8; MAX_DATA_LENGTH];
 
     let mut peer_addr = MaybeUninit::<SocketAddr>::uninit();
-   //         let mut data = std::ptr::null_mut(); // ptr for the file bytes
+    //         let mut data = std::ptr::null_mut(); // ptr for the file bytes
     let filename = "3.m4a";
     let mut layout = MaybeUninit::<Layout>::uninit();
     let mut chunks_cnt: u16 = 0;
-  //  let mut start = false;
+    //  let mut start = false;
     let key_bytes: Vec<u8> = randombytes(0x20);
     let key = generate_key(key_bytes);
 
-    let mut packet_ids: Vec<u16> = Vec::new();
+    //let mut packet_ids: Vec<u16> = Vec::new();
     let mut data = std::ptr::null_mut(); // ptr for the file bytes
 
+    //  let mut v = Arc::new(packet_ids);
     let (debounce_tx, mut debounce_rx) = mpsc::channel::<u16>(256);
 
+    let mut packet_ids: Vec<u16> = Vec::new();
+    packet_ids = vec![0; 69]; // TODO: REPLACE HARDCODING OF 69 WITH CHUNKS_CNT
+
+    let socket_out = UdpSocket::bind(ADDRESS_OUT).await.unwrap();
+    //   let sender = UdpSocket::bind(&addr).await.unwrap();
+    let arc_out = Arc::new(socket_out);
+
     let _debouncer = task::spawn(async move {
-
-
         let duration = Duration::from_millis(1300);
 
         loop {
             match time::timeout(duration, debounce_rx.recv()).await {
                 Ok(Some(id)) => {
-                     eprintln!("WTF ??????: {:?}", packet_ids);
-                 //   let current_chunks_cnt = chunks_cnt.clone();
+                    //    eprintln!("WTF ??????: {:?}", packet_ids);
+                    //   let current_chunks_cnt = chunks_cnt.clone();
 
-
-                        packet_ids[id as usize] = 1;
+                    packet_ids[id as usize] = 1;
                     //    eprintln!("{} id packet received:{:?}", id, *packet_ids);
-                        if packet_ids.iter().all(|x| x == &1u16) {
-                            println!("All packets have been received, stop program ");
-                            start = false;
-                        }
-
+                    if packet_ids.iter().all(|x| x == &1u16) {
+                        println!("All packets have been received, stop program ");
+                        start = false;
+                    }
                 }
                 Ok(None) => {
                     eprintln!("Done: {:?}", packet_ids);
                     break;
                 }
                 Err(_) => {
-                 //   eprintln!("No activity for 1.3sd");
-
-                     unsafe {
+                    unsafe {
+                        eprintln!(
+                            "No activity for 1.3sd, requesting missing chunks to {:?}",
+                            ADDRESS_CLIENT
+                        );
                         let missing_chunks = packet_ids.align_to::<u8>().1; // convert from u16 to u8
-                       // arc.clone().send_to(&*missing_chunks, &peer_addr.assume_init()).await;
-                   //     println!("Resquesting missing ids: {:?}", packet_ids);
+
+                         eprintln!("Done: {:?}", arc_out.clone());
+                         let thread_socket = arc_out.clone();
+                       // arc_out.clone().unwrap().send_to(b"hello world", "127.0.0.1:8081").await;
+                        thread_socket.send_to(&*missing_chunks, ADDRESS_CLIENT).await; // arc_out.clone().send_to(&*missing_chunks, &peer_addr.assume_init()).await;
+                        println!("Resquesting missing ids: {:?}", packet_ids);
                         // sock.send_to(&missing_chunks, &peer_addr.assume_init())
                         //   .expect("Failed to send a response");
                     }
-
-
                 }
             }
         }
@@ -197,12 +204,12 @@ async fn server() {
             let n: usize = MAX_DATAGRAM_SIZE << next_power_of_two_exponent(chunks_cnt as u32);
             debug_assert_eq!(n.count_ones(), 1); // can check with this function that n is aligned on power of 2
             eprintln!("chunk count: {}", chunks_cnt);
-            packet_ids = vec![0; chunks_cnt as usize];
+            // v.resize(chunks_cnt as usize, 0);
 
-            eprintln!("packets count: {:?}", packet_ids);
+            //    eprintln!("packets count: {:?}", packet_ids);
 
             let id: u16 = (buf[0] as u16) << 8 | buf[1] as u16;
-             unsafe {
+            unsafe {
                 // SAFETY: layout.as_mut_ptr() is valid for writing and properly aligned
                 // SAFETY: align_of<u8>() is nonzero and a power of two thanks to previous function
                 // SAFETY: no shift amount will make 0x10000 << x round up to usize::MAX
@@ -215,8 +222,8 @@ async fn server() {
                 let dst_ptr = data.offset((id as usize * MAX_CHUNK_SIZE) as isize);
                 memcpy(dst_ptr, &buf[AG_HEADER], len - AG_HEADER);
             }
-if id < chunks_cnt {
-            debounce_tx.send(id).await.expect("Unable to talk to debounce");
+            if id < chunks_cnt {
+                debounce_tx.send(id).await.expect("Unable to talk to debounce");
             }
         }
         Err(_) => {
@@ -228,39 +235,35 @@ if id < chunks_cnt {
     while start {
         let thread_socket = arc.clone();
         let debounce_tx = debounce_tx.clone();
-    /*    let _server = task::spawn({
+        /*    let _server = task::spawn({
 
 
-            async move {*/
+        async move {*/
 
         //    eprintln!("runnning");
-                if let result = thread_socket.recv_from(&mut buf).await {
-                    match result {
-                        Ok((len, addr)) => {
-                           //eprintln!("Bytes len: {} from {}", len, addr);
+        if let result = thread_socket.recv_from(&mut buf).await {
+            match result {
+                Ok((len, addr)) => {
+                    //eprintln!("Bytes len: {} from {}", len, addr);
 
-                            let id: u16 = (buf[0] as u16) << 8 | buf[1] as u16;
-                            eprintln!("{} id received", id);
-                            unsafe {
-                                let dst_ptr = data.offset((id as usize * MAX_CHUNK_SIZE) as isize);
-                                memcpy(dst_ptr, &buf[AG_HEADER], len - AG_HEADER);
-                            };
-                        if id < chunks_cnt {
-                            debounce_tx
-                                .send(id)
-                                .await
-                                .expect("Unable to talk to debounce");
-                                }
-
-                        }
-                        Err(_) => {
-                            eprintln!("Couldnt get datagram");
-                        }
+                    let id: u16 = (buf[0] as u16) << 8 | buf[1] as u16;
+                    eprintln!("{} id received", id);
+                    unsafe {
+                        let dst_ptr = data.offset((id as usize * MAX_CHUNK_SIZE) as isize);
+                        memcpy(dst_ptr, &buf[AG_HEADER], len - AG_HEADER);
+                    };
+                    if id < chunks_cnt {
+                        debounce_tx.send(id).await.expect("Unable to talk to debounce");
                     }
                 }
-                // Prevent deadlocks
-                drop(debounce_tx);
-         /*   }
+                Err(_) => {
+                    eprintln!("Couldnt get datagram");
+                }
+            }
+        }
+        // Prevent deadlocks
+        drop(debounce_tx);
+        /*   }
         });*/
     }
     // Wait for everything to finish
