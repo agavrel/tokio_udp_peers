@@ -1,141 +1,93 @@
-use rand::Rng;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::time::Duration;
-use std::{env, io};
-use tokio::net::UdpSocket;
-use tokio::{sync::mpsc, task, time}; // 1.4.0 // 0.8.0
+use std::{collections::BTreeSet, time::Duration};
+use tokio::{sync::mpsc, task, time, net::{TcpStream, TcpListener}, io::{AsyncWriteExt, AsyncReadExt}}; // 1.4.0
 
-const UDP_HEADER: usize = 8;
-const IP_HEADER: usize = 20;
-const AG_HEADER: usize = 4;
-const MAX_DATA_LENGTH: usize = (64 * 1024 - 1) - UDP_HEADER - IP_HEADER;
-const MAX_CHUNK_SIZE: usize = MAX_DATA_LENGTH - AG_HEADER;
-const MAX_DATAGRAM_SIZE: usize = 0x10000;
+const ADDRESS: &str = "127.0.0.1:8775";
 
 #[tokio::main]
 async fn main() {
-    // mpsc::channel(3000)::<(usize, SocketAddr)>(3300);
+    match std::env::args().nth(1).as_deref() {
+        Some("server") => server().await,
+        _ => client().await,
+    }
+}
 
-    /*
-        eprintln!("waiting for first packet");
-        let result = network_rx.recv().await;
-        eprintln!("{:?}", result.unwrap());
+async fn server() {
+    eprintln!("Starting the server");
 
-        eprintln!("start");
-    */
+    let listener = TcpListener::bind(ADDRESS).await.expect("Unable to bind");
 
-    let mut missing_ids: Vec<i32> = Vec::new();
-    missing_ids = vec![0; 10];
+    while let Ok((socket, _)) = listener.accept().await {
+        let (mut network_rx, mut network_tx) = socket.into_split();
+        let (debounce_tx, mut debounce_rx) = mpsc::channel(10);
 
-    let (debounce_tx, mut debounce_rx) = mpsc::channel::<Vec<u8>>(1300); // mpsc::channel<Vec<u8>>(3300);
-    let (network_tx, mut network_rx) = mpsc::channel::<Vec<u8>>(1300);
-    // Listen for events
-    let debouncer = task::spawn(async move {
-        let duration = Duration::from_millis(1000);
+        // Listen for events
+        let debouncer = task::spawn(async move {
+            let mut ids = BTreeSet::new();
+            let duration = Duration::from_millis(10);
 
-        loop {
-            match time::timeout(duration, debounce_rx.recv()).await {
-                Ok(Some(bytes)) => {
-                    // TODO: add mutex for very first packet
-
-                    eprintln!("Network activity");
-                    let id = bytes.clone()[0];
-                    //eprintln!("id: {} {:?}", id, bytes);
-                    eprintln!("id: {}", id);
-                    missing_ids[id as usize] = 1;
-                    eprintln!("{:?}", missing_ids);
-
-                    if missing_ids.iter().all(|x| x == &1i32) {
-                        println!("FINISHHHHHHH ");
+            loop {
+                match time::timeout(duration, debounce_rx.recv()).await {
+                    Ok(Some(id)) => {
+                        ids.insert(id);
+                    }
+                    Ok(None) => {
+                        eprintln!("Sending: {:?}", ids);
+                        for &v in &ids {
+                            network_tx.write_i32(v).await.expect("Unable to send ID");
+                        }
                         break;
-                        //break;
+                    }
+                    Err(_) => {
+                        eprintln!("Sending: {:?}", ids);
+                        for &v in &ids {
+                            network_tx.write_i32(v).await.expect("Unable to send ID");
+                        }
+                        ids.clear();
                     }
                 }
-                Ok(None) => {
-                    // write file
-                    eprintln!("Debounce finished");
-                    break;
-                }
-                Err(_) => {
-                    eprintln!("{:?} since network activity", duration)
-                    // request for missing indexes
+            }
+        });
+
+        // Listen for network activity
+        let server = task::spawn({
+            let debounce_tx = debounce_tx.clone();
+            async move {
+                while let Ok(id) = network_rx.read_i32().await {
+                    debounce_tx
+                        .send(id)
+                        .await
+                        .expect("Unable to talk to debounce");
                 }
             }
-        }
-    });
+        });
 
-    // Listen for network activity
+        // Prevent deadlocks
+        drop(debounce_tx);
 
-    let server = task::spawn({
-        let debounce_tx = debounce_tx.clone();
-        async move {
-            'outer: while let Some(bytes) = network_rx.recv().await {
-                // start = true;
-                // Received a packet
-                let result = debounce_tx.send(bytes).await;
-
-                println!("{:?}", result);
-                match result {
-                    Ok(v) => println!("working with version: {:?}", v),
-                    Err(e) => break 'outer,
-                }
-
-                //.expect("Unable to talk to debounce");
-
-                //  eprintln!("Received a packet: {:?}", bytes.clone());
-            }
-        }
-    });
-
-    // Prevent deadlocks
-    drop(debounce_tx);
-    let  to_send: Option<(usize, SocketAddr)>;
-    let addr = env::args().nth(1).unwrap_or_else(|| "127.0.0.1:8080".to_string());
-
-    let socket = UdpSocket::bind(&addr).await.unwrap();
-    println!("Listening to {} ", addr);
-
-
-
-     let sock = UdpSocket::bind("0.0.0.0:8080").await;
-        let mut buf = [0u8; MAX_DATA_LENGTH];
-    loop {
-        // TODO: SHOULD BE A LOOP
-        // let sock = socket.try_clone().expect("Failed to clone socket");
-
-        // [0u8; MAX_DATA_LENGTH];
-
-            let (len, addr) = socket.recv_from(&mut buf).await.unwrap();
-       //     to_send = socket. poll_recv_from(&mut buf).await;
-        network_tx.send(buf.to_vec()).await.expect("Unable to talk to network");
-
-        /*    // Drive the network input
-           // println!("{:?}", debounce_tx);
-            network_tx.send(vec![1, 2, 3]).await.expect("Unable to talk to network");
-            network_tx.send(vec![4, 2, 3]).await.expect("Unable to talk to network");
-            network_tx.send(vec![3, 2, 3]).await.expect("Unable to talk to network");
-
-            time::sleep(Duration::from_millis(1200)).await;
-
-            network_tx.send(vec![2, 2, 3]).await.expect("Unable to talk to network");
-
-            network_tx.send(vec![5, 2, 3]).await.expect("Unable to talk to network");
-
-            let mut rng = rand::thread_rng();
-            let c = 1; // change for different probability
-            let n1: u8 = rng.gen_range(0..c);
-            network_tx.send(vec![n1, 2, 3]).await.expect("Unable to talk to network"); // stop when n1 = 0
-
-            time::sleep(Duration::from_millis(1200)).await;
-
-        */
-        //   println!("{:?}", debounce_tx);
+        // Wait for everything to finish
+        server.await.expect("Server panicked");
+        debouncer.await.expect("Debouncer panicked");
     }
 
-    // Close the network
-    drop(network_tx);
+    eprintln!("Server done");
+}
 
-    // Wait for everything to finish
-    server.await.expect("Server panicked");
-    debouncer.await.expect("Debouncer panicked");
+async fn client() {
+    eprintln!("Starting the client");
+
+    let mut connection = TcpStream::connect(ADDRESS).await.expect("Unable to connect");
+
+    connection.write_i32(1).await.expect("Unable to talk to network");
+    connection.write_i32(2).await.expect("Unable to talk to network");
+    connection.write_i32(3).await.expect("Unable to talk to network");
+
+    time::sleep(Duration::from_millis(20)).await;
+
+    connection.write_i32(4).await.expect("Unable to talk to network");
+    connection.write_i32(5).await.expect("Unable to talk to network");
+    connection.write_i32(6).await.expect("Unable to talk to network");
+
+    time::sleep(Duration::from_millis(20)).await;
+
+    eprintln!("Client done");
 }
