@@ -25,7 +25,7 @@ async fn main() {
     */
 
     let mut missing_ids: Vec<i32> = Vec::new();
-    missing_ids = vec![0; 6];
+    missing_ids = vec![0; 10];
 
     let (debounce_tx, mut debounce_rx) = mpsc::channel::<Vec<u8>>(1300); // mpsc::channel<Vec<u8>>(3300);
     let (network_tx, mut network_rx) = mpsc::channel::<Vec<u8>>(1300);
@@ -40,7 +40,8 @@ async fn main() {
 
                     eprintln!("Network activity");
                     let id = bytes.clone()[0];
-                    eprintln!("id: {} {:?}", id, bytes);
+                    //eprintln!("id: {} {:?}", id, bytes);
+                    eprintln!("id: {}", id);
                     missing_ids[id as usize] = 1;
                     eprintln!("{:?}", missing_ids);
 
@@ -88,21 +89,25 @@ async fn main() {
 
     // Prevent deadlocks
     drop(debounce_tx);
-
+    let  to_send: Option<(usize, SocketAddr)>;
     let addr = env::args().nth(1).unwrap_or_else(|| "127.0.0.1:8080".to_string());
 
-    let socket = UdpSocket::bind(&addr).await;
+    let socket = UdpSocket::bind(&addr).await.unwrap();
     println!("Listening to {} ", addr);
 
+
+
+     let sock = UdpSocket::bind("0.0.0.0:8080").await;
+        let mut buf = [0u8; MAX_DATA_LENGTH];
     loop {
         // TODO: SHOULD BE A LOOP
         // let sock = socket.try_clone().expect("Failed to clone socket");
-        //  let mut buf = Vec<u8>::with_capacity(MAX_DATA_LENGTH);
+
         // [0u8; MAX_DATA_LENGTH];
 
-        let packet = network_rx.recv().await;
-
-        network_tx.send(packet.unwrap()).await.expect("Unable to talk to network");
+            let (len, addr) = socket.recv_from(&mut buf).await.unwrap();
+       //     to_send = socket. poll_recv_from(&mut buf).await;
+        network_tx.send(buf.to_vec()).await.expect("Unable to talk to network");
 
         /*    // Drive the network input
            // println!("{:?}", debounce_tx);

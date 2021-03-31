@@ -17,7 +17,7 @@ path = "src/client/bin/main.rs"
 
 [dependencies]
 rand = "0.8.0"
-tokio = { version = "1.4", features = ["full", "tracing", "time"] }
+tokio = { version = "1.4", features = ["full", "tracing", "time", "net"] }
 tiny-keccak = { version = "2.0", features = ["sha3"] } # https://lib.rs/crates/tiny-keccak
 ring = { version = "0.16.20"}
 sodiumoxide = { version = "0.2.6"}
