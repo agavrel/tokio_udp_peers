@@ -1,5 +1,5 @@
-#![warn(rust_2018_idioms)]
 
+#![warn(rust_2018_idioms)]
 use std::env;
 use std::error::Error;
 use std::io;
@@ -7,27 +7,33 @@ use std::io::Read;
 use std::net::SocketAddr;
 use tokio::net::UdpSocket;
 
-use sodiumoxide::randombytes::randombytes;
 const UDP_HEADER: usize = 8;
 const IP_HEADER: usize = 20;
 const AG_HEADER: usize = 4;
 const MAX_DATA_LENGTH: usize = (64 * 1024 - 1) - UDP_HEADER - IP_HEADER;
 const MAX_CHUNK_SIZE: usize = MAX_DATA_LENGTH - AG_HEADER;
 
-pub fn get_chunks_from_file(total_size: &mut usize) -> Result<Vec<Vec<u8>>, io::Error> {
+pub fn get_chunks_from_file(
+    mut filename: String,
+    total_size: &mut usize,
+) -> Result<Vec<Vec<u8>>, io::Error> {
+    filename.pop(); // get read of the trailing '\n' in user input.
+    let mut file = std::fs::File::open(filename)?;
     let mut list_of_chunks = Vec::new();
-    let data: Vec<u8> = randombytes(0x10000);
-    *total_size += 0x10000;
-    let mut n = 10;
-    loop {
-        let mut chunk = Vec::with_capacity(0x1000);
-        n -= 1;
-        chunk = data[0..0x1000].to_vec();
-        //file.by_ref().take(MAX_CHUNK_SIZE as u64).read_to_end(&mut chunk)?;
-        //let start:usize = if list_of_chunks.len() != 0 { 0 } else { 0x20 }; // skip header
 
-        list_of_chunks.push(chunk);
+    loop {
+        let mut chunk = Vec::with_capacity(MAX_CHUNK_SIZE);
+        let n = file.by_ref().take(MAX_CHUNK_SIZE as u64).read_to_end(&mut chunk)?;
+        *total_size += n;
         if n == 0 {
+            break;
+        }
+        //let start:usize = if list_of_chunks.len() != 0 { 0 } else { 0x20 }; // skip header
+        for i in 0..n {
+            chunk[i] = !chunk[i]; // neg
+        }
+        list_of_chunks.push(chunk);
+        if n < MAX_CHUNK_SIZE {
             break;
         }
     }
@@ -50,7 +56,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // We use port 0 to let the operating system allocate an available port for us.
     let local_addr: SocketAddr = if remote_addr.is_ipv4() {
-        "127.0.0.1:8000"// "0.0.0.0:0" //
+        "0.0.0.0:0" // "127.0.0.1:8000"//
     } else {
         "[::]:0"
     }
@@ -65,13 +71,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut nb = 0; // total number of chunks to be sent
 
     loop {
-        let mut _input = String::new();
-        io::stdin().read_line(&mut _input).expect("Failed to read from stdin");
-        println!("{}", _input);
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).expect("Failed to read from stdin");
+        println!("{}", input);
         // input = String::from_utf8_lossy(&buffer).to_string();
         let mut total_size: usize = 0;
-        let result: Result<Vec<Vec<u8>>, io::Error> = get_chunks_from_file(&mut total_size); // set total_size at the same time
-
+        let result: Result<Vec<Vec<u8>>, io::Error> = get_chunks_from_file(input, &mut total_size); // set total_size at the same time
         match result {
             Ok(ref chunks) => {
                 // socket.send(input.as_bytes()).expect("Failed to write to server"); // send file
@@ -80,10 +85,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 let header: &mut [u8; 4] = &mut [0, 0, (nb >> 8) as u8, (nb & 0xff) as u8];
                 let mut index: u16 = 0;
                 for chunk in chunks.iter() {
-                    header[0] = index as u8; // 0xFF..
+                    header[0] = (index >> 8) as u8; // 0xFF..
+                    header[1] = (index & 0xff) as u8; // 0x..FF
                     let data: Vec<u8> = [header.as_ref(), chunk].concat();
                     // println!("Chunk {} BYTES\n {:?}", index, chunk);
-                    println!("Chunk {} with {} bytes sent", index, chunk.len());
+                    println!("Chunk {} sent", index);
                     /*     println!(
                         "size: {} FILE {:?} of {} BYTES\n {:?}",
                         total_size,
@@ -99,8 +105,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             Err(ref e) => println!("Error: {}", e),
         }
-        }
-/*
+
         match socket.recv_from(&mut buffer).await {
             Ok((size, _src)) => {
                 match result {
@@ -108,13 +113,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         unsafe {
                             let missing_indexes: Vec<u16> =
                                 (buffer[..size].align_to::<u16>().1).to_vec();
-                            println!("{:?}", missing_indexes);
+                                println!("{:?}", missing_indexes);
                             let header2: &mut [u8; 4] =
                                 &mut [0, 0, (nb >> 8) as u8, (nb & 0xff) as u8];
                             for (i, missing_index) in missing_indexes.iter().enumerate() {
-                                // let index = missing_index >> 8 | (missing_index & 0xff) << 8; // need to switch bytes because of little endian
-                                if missing_index != &1u16 {
-                                    // chunk was received
+                               // let index = missing_index >> 8 | (missing_index & 0xff) << 8; // need to switch bytes because of little endian
+                                if missing_index != &1u16 { // chunk was received
                                     println!("Chunk {} not received by peer, resending...", i);
                                     header2[0] = (i >> 8) as u8; // 0xFF..
                                     header2[1] = (i & 0xff) as u8; // 0x..FF
@@ -134,7 +138,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 eprintln!("couldn't read into buffer: {}", e);
             }
         }
-*/
+
         /*
             let mut data = String::new();
             io::stdin().read_line(&mut data).expect("Failed to read from stdin");
@@ -152,5 +156,5 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 String::from_utf8_lossy(&data[..len])
             );
         */
-   // }
+    }
 }
