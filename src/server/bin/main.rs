@@ -157,6 +157,7 @@ async fn server() {
         let duration = Duration::from_millis(1300);
 
         loop {
+       //  let thread_socket = arc.clone();
             match time::timeout(duration, debounce_rx.recv()).await {
                 Ok(Some(id)) => {
                     //    eprintln!("WTF ??????: {:?}", packet_ids);
@@ -180,12 +181,12 @@ async fn server() {
                             ADDRESS_CLIENT
                         );
                         let missing_chunks = packet_ids.align_to::<u8>().1; // convert from u16 to u8
-
-                         eprintln!("Done: {:?}", arc_out.clone());
+                      //  eprintln!("haha: {:?}", &*missing_chunks);
+                         //eprintln!("Done: {:?}", arc.clone());
                          let thread_socket = arc_out.clone();
                        // arc_out.clone().unwrap().send_to(b"hello world", "127.0.0.1:8081").await;
                         thread_socket.send_to(&*missing_chunks, ADDRESS_CLIENT).await; // arc_out.clone().send_to(&*missing_chunks, &peer_addr.assume_init()).await;
-                        println!("Resquesting missing ids: {:?}", packet_ids);
+                      //  println!("Resquesting missing ids: {:?}", packet_ids);
                         // sock.send_to(&missing_chunks, &peer_addr.assume_init())
                         //   .expect("Failed to send a response");
                     }
@@ -194,8 +195,8 @@ async fn server() {
         }
     });
     // Listen for first packet
-
-    let result = arc.clone().recv_from(&mut buf).await;
+    let thread_socket = arc.clone();
+    let result = thread_socket.recv_from(&mut buf).await;
     match result {
         Ok((len, addr)) => {
             eprintln!("Bytes len: {} from {}", len, addr);

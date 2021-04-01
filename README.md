@@ -92,3 +92,9 @@ export PATH="/home/st4ck/.cargo/bin:$PATH"
 ```
 colordiff -y <(xxd 3.m4a) <(xxd 2.m4a)
 ```
+
+### Send bytes to local port with command line
+
+```
+echo -n -e '\x00\x01\x00\x45\x01\x00\x00'  >/dev/udp/localhost/8080
+```
