@@ -113,7 +113,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
            // let len = socket.recv(&mut data).await?;
 
            let chunks = result.unwrap();
-           println!("HELLLLO ");
+
              let mut buffer = [0u8; MAX_DATA_LENGTH];
 
           loop {
@@ -133,9 +133,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                             println!("Chunk {} not received by peer, resending...", i);
                             header2[0] = (i >> 8) as u8; // 0xFF..
                             header2[1] = (i & 0xff) as u8; // 0x..FF
-                          //  let missing_chunk = *chunks[i];
-                           // let data: Vec<u8> = [header2.as_ref(), missing_chunk].concat();
-                           // socket.send(&data).await?; //.expect("Failed to write to server");
+                            let missing_chunk = &chunks[i];
+                            let data: Vec<u8> = [header2.as_ref(), &missing_chunk].concat();
+                            socket.send(&data).await?; //.expect("Failed to write to server");
                         }
                     }
                 }

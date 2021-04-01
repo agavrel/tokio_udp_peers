@@ -161,8 +161,8 @@ async fn server() {
      thread_socket.send_to(b"heeey", ADDRESS_CLIENT).await;
 */
 
-
-
+{
+    let thread_socket = arc.clone();
     let _debouncer = task::spawn(async move {
 
         let duration = Duration::from_millis(1300);
@@ -180,6 +180,36 @@ async fn server() {
                     if packet_ids.iter().all(|x| x == &1u16) {
                         println!("All packets have been received, stop program ");
                         start = false;
+/*
+
+                         // all chunks have been collected, write bytes to file
+                        // SAFETY: data must be valid for boths reads and writes for len * mem::size_of::<T>() many bytes,
+                        // and it must be properly aligned.
+                        // data must point to len consecutive properly initialized values of type T.
+                        // The memory referenced by the returned slice must not be accessed through any other pointer
+                        // (not derived from the return value) for the duration of lifetime 'a. Both read and write accesses
+                        // are forbidden.
+                        // The total size of len * mem::size_of::<T>() of the slice must be no larger than isize::MAX.
+                        // See the safety documentation of pointer::offset.
+                        let bytes: &mut [u8] = unsafe { std::slice::from_raw_parts_mut(data, len) };
+                        for i in 0..len {
+                            bytes[i] = !bytes[i];
+                        }
+                        if is_file_extension_matching_magic(filename, bytes[0..0x20].to_vec()) == true {
+                            let result = write_chunks_to_file(filename, &bytes);
+                            start = false;
+                            match result {
+                                Ok(()) => println!("Successfully created file: {}", filename),
+                                Err(e) => println!("Error: {}", e),
+                            }
+                        } else {
+                            println!("file  {} does not match his true type", filename);
+                        }
+                        unsafe {
+                            dealloc(data, layout.assume_init());
+                        }
+*/
+
                     }
                 }
                 Ok(None) => {
@@ -201,7 +231,7 @@ async fn server() {
 
 
 
-                      //  thread_socket.send_to(&*missing_chunks, ADDRESS_CLIENT).await; // arc_out.clone().send_to(&*missing_chunks, &peer_addr.assume_init()).await;
+                        thread_socket.send_to(&*missing_chunks, ADDRESS_CLIENT).await; // arc_out.clone().send_to(&*missing_chunks, &peer_addr.assume_init()).await;
 
 
 
@@ -216,7 +246,8 @@ async fn server() {
         }
     });
     // Listen for first packet
-    let thread_socket = arc.clone();
+}
+let thread_socket = arc.clone();
     let result = thread_socket.recv_from(&mut buf).await;
     match result {
         Ok((len, addr)) => {
