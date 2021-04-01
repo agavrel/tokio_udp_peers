@@ -76,7 +76,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         let mut input = String::new();
         io::stdin().read_line(&mut input).expect("Failed to read from stdin");
-        println!("{}", input);
+  //      println!("{}", input);
         // input = String::from_utf8_lossy(&buffer).to_string();
         let mut total_size: usize = 0;
         let result: Result<Vec<Vec<u8>>, io::Error> = get_chunks_from_file(input, &mut total_size); // set total_size at the same time
@@ -130,7 +130,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     for (i, missing_index) in missing_indexes.iter().enumerate() {
                        // let index = missing_index >> 8 | (missing_index & 0xff) << 8; // need to switch bytes because of little endian
                         if missing_index != &1u16 { // chunk was received
-                            println!("Chunk {} not received by peer, resending... {:?}", i, chunks);
+                            println!("Chunk {} not received by peer, resending...", i);
                             header2[0] = (i >> 8) as u8; // 0xFF..
                             header2[1] = (i & 0xff) as u8; // 0x..FF
                           //  let missing_chunk = *chunks[i];

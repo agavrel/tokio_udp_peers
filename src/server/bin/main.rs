@@ -121,6 +121,7 @@ async fn main() {
     }
 }
 
+
 async fn server() {
     eprintln!("Starting the server");
     let mut start: bool = false;
@@ -149,15 +150,26 @@ async fn server() {
     let mut packet_ids: Vec<u16> = Vec::new();
     packet_ids = vec![0; 69]; // TODO: REPLACE HARDCODING OF 69 WITH CHUNKS_CNT
 
-    let socket_out = UdpSocket::bind(ADDRESS_OUT).await.unwrap();
+ //   let socket_out = UdpSocket::bind(ADDRESS_OUT).await.unwrap();
     //   let sender = UdpSocket::bind(&addr).await.unwrap();
-    let arc_out = Arc::new(socket_out);
+   // let arc_out = Arc::new(socket_out);
+
+
+/*
+        let thread_socket = arc.clone();
+        let result = thread_socket.recv_from(&mut buf).await;
+     thread_socket.send_to(b"heeey", ADDRESS_CLIENT).await;
+*/
+
+
 
     let _debouncer = task::spawn(async move {
+
         let duration = Duration::from_millis(1300);
 
         loop {
        //  let thread_socket = arc.clone();
+
             match time::timeout(duration, debounce_rx.recv()).await {
                 Ok(Some(id)) => {
                     //    eprintln!("WTF ??????: {:?}", packet_ids);
@@ -183,9 +195,18 @@ async fn server() {
                         let missing_chunks = packet_ids.align_to::<u8>().1; // convert from u16 to u8
                       //  eprintln!("haha: {:?}", &*missing_chunks);
                          //eprintln!("Done: {:?}", arc.clone());
-                         let thread_socket = arc_out.clone();
+                 //        let thread_socket = arc.clone();
                        // arc_out.clone().unwrap().send_to(b"hello world", "127.0.0.1:8081").await;
-                        thread_socket.send_to(&*missing_chunks, ADDRESS_CLIENT).await; // arc_out.clone().send_to(&*missing_chunks, &peer_addr.assume_init()).await;
+
+
+
+
+                      //  thread_socket.send_to(&*missing_chunks, ADDRESS_CLIENT).await; // arc_out.clone().send_to(&*missing_chunks, &peer_addr.assume_init()).await;
+
+
+
+
+
                       //  println!("Resquesting missing ids: {:?}", packet_ids);
                         // sock.send_to(&missing_chunks, &peer_addr.assume_init())
                         //   .expect("Failed to send a response");
