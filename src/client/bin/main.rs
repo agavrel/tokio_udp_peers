@@ -122,14 +122,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 
                unsafe {
-                    let missing_indexes: Vec<u16> =
-                        (buffer[..len].align_to::<u16>().1).to_vec();
-                        println!("{:?}", missing_indexes);
+                 //   let missing_indexes: Vec<u16> =
+                   //     (buffer[..len].align_to::<u16>().1).to_vec();
+                        println!("{:?}", &buffer[..len]);
                     let header2: &mut [u8; 4] =
                         &mut [0, 0, (nb >> 8) as u8, (nb & 0xff) as u8];
-                    for (i, missing_index) in missing_indexes.iter().enumerate() {
+                    for (i, missing_index) in buffer[..len].iter().enumerate() {
                        // let index = missing_index >> 8 | (missing_index & 0xff) << 8; // need to switch bytes because of little endian
-                        if missing_index != &1u16 { // chunk was received
+                        if missing_index == &0u8 { // chunk was received
                             println!("Chunk {} not received by peer, resending...", i);
                             header2[0] = (i >> 8) as u8; // 0xFF..
                             header2[1] = (i & 0xff) as u8; // 0x..FF

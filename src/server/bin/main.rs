@@ -147,7 +147,7 @@ async fn server() {
     //  let mut v = Arc::new(packet_ids);
     let (debounce_tx, mut debounce_rx) = mpsc::channel::<u16>(256);
 
-    let mut packet_ids: Vec<u16> = Vec::new();
+    let mut packet_ids: Vec<u8> = Vec::new();
     packet_ids = vec![0; 69]; // TODO: REPLACE HARDCODING OF 69 WITH CHUNKS_CNT
 
  //   let socket_out = UdpSocket::bind(ADDRESS_OUT).await.unwrap();
@@ -163,9 +163,10 @@ async fn server() {
 
 {
     let thread_socket = arc.clone();
+     let mut start: bool = true;
     let _debouncer = task::spawn(async move {
 
-        let duration = Duration::from_millis(1300);
+        let duration = Duration::from_millis(300);
 
         loop {
        //  let thread_socket = arc.clone();
@@ -176,8 +177,8 @@ async fn server() {
                     //   let current_chunks_cnt = chunks_cnt.clone();
 
                     packet_ids[id as usize] = 1;
-                    //    eprintln!("{} id packet received:{:?}", id, *packet_ids);
-                    if packet_ids.iter().all(|x| x == &1u16) {
+                        eprintln!("{} id packet received:{:?}", id, packet_ids);
+                    if packet_ids.iter().all(|x| x == &1u8) {
                         println!("All packets have been received, stop program ");
                         start = false;
 /*
@@ -217,6 +218,10 @@ async fn server() {
                     break;
                 }
                 Err(_) => {
+
+                    if start == false {
+                        break;
+                    }
                     unsafe {
                         eprintln!(
                             "No activity for 1.3sd, requesting missing chunks to {:?}",
@@ -300,7 +305,7 @@ let thread_socket = arc.clone();
                     //eprintln!("Bytes len: {} from {}", len, addr);
 
                     let id: u16 = (buf[0] as u16) << 8 | buf[1] as u16;
-                    eprintln!("{} id received", id);
+                //    eprintln!("{} id received", id);
                     unsafe {
                         let dst_ptr = data.offset((id as usize * MAX_CHUNK_SIZE) as isize);
                         memcpy(dst_ptr, &buf[AG_HEADER], len - AG_HEADER);
