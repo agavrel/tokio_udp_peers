@@ -17,6 +17,8 @@ use std::fs::File;
 use std::mem;
 use std::mem::MaybeUninit;
 
+use bit_vec::BitVec; // TODO: replace packet_ids with let mut bv = BitVec::from_elem(max_prime, true); to save 87.5% bytes
+
 const UDP_HEADER: usize = 8;
 const IP_HEADER: usize = 20;
 const AG_HEADER: usize = 4;
@@ -108,7 +110,6 @@ fn generate_key(random_bytes: Vec<u8>) -> Key {
 }
 
 const ADDRESS: &str = "127.0.0.1:8080";
-const ADDRESS_OUT: &str = "127.0.0.1:8081";
 const ADDRESS_CLIENT: &str = "127.0.0.1:8000";
 
 #[tokio::main]
@@ -146,8 +147,8 @@ async fn server() {
     //  let mut v = Arc::new(packet_ids);
     let (debounce_tx, mut debounce_rx) = mpsc::channel::<u16>(256);
 
-    let mut packet_ids: Vec<u8> = Vec::new();
-    packet_ids = vec![0; 69]; // TODO: REPLACE HARDCODING OF 69 WITH CHUNKS_CNT
+    let mut _packet_ids: Vec<u8> = Vec::new();
+    _packet_ids = vec![0; 69]; // TODO: REPLACE HARDCODING OF 69 WITH CHUNKS_CNT
 
     //   let socket_out = UdpSocket::bind(ADDRESS_OUT).await.unwrap();
     //   let sender = UdpSocket::bind(&addr).await.unwrap();
@@ -172,9 +173,9 @@ async fn server() {
                     //    eprintln!("WTF ??????: {:?}", packet_ids);
                     //   let current_chunks_cnt = chunks_cnt.clone();
 
-                    packet_ids[id as usize] = 1;
-                    eprintln!("{} id packet received:{:?}", id, packet_ids);
-                    if packet_ids.iter().all(|x| x == &1u8) {
+                    _packet_ids[id as usize] = 1;
+                    eprintln!("{} id packet received:{:?}", id, _packet_ids);
+                    if _packet_ids.iter().all(|x| x == &1u8) {
                         println!("All packets have been received, stop program ");
                         start = false;
                         /*
@@ -209,7 +210,7 @@ async fn server() {
                     }
                 }
                 Ok(None) => {
-                    eprintln!("Done: {:?}", packet_ids);
+                    eprintln!("Done: {:?}", _packet_ids);
                     break;
                 }
                 Err(_) => {
@@ -221,13 +222,13 @@ async fn server() {
                             "No activity for 1.3sd, requesting missing chunks to {:?}",
                             ADDRESS_CLIENT
                         );
-                        let missing_chunks = packet_ids.align_to::<u8>().1; // convert from u16 to u8
+                     //   let missing_chunks = _packet_ids.align_to::<u8>().1; // convert from u16 to u8
                                                                             //  eprintln!("haha: {:?}", &*missing_chunks);
                                                                             //eprintln!("Done: {:?}", arc.clone());
                                                                             //        let thread_socket = arc.clone();
                                                                             // arc_out.clone().unwrap().send_to(b"hello world", "127.0.0.1:8081").await;
 
-                        thread_socket.send_to(&*missing_chunks, ADDRESS_CLIENT).await;
+                        thread_socket.send_to(&_packet_ids, ADDRESS_CLIENT).await;
                         // arc_out.clone().send_to(&*missing_chunks, &peer_addr.assume_init()).await;
 
                         //  println!("Resquesting missing ids: {:?}", packet_ids);
@@ -289,7 +290,7 @@ async fn server() {
         //    eprintln!("runnning");
         if let result = thread_socket.recv_from(&mut buf).await {
             match result {
-                Ok((len, addr)) => {
+                Ok((len, _)) => {
                     //eprintln!("Bytes len: {} from {}", len, addr);
 
                     let id: u16 = (buf[0] as u16) << 8 | buf[1] as u16;
