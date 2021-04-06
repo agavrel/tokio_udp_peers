@@ -186,17 +186,21 @@ async fn server() {
         }
     }
     _packet_ids = (&v[0..chunks_cnt as usize]).to_vec(); // crop to the desired size
+    let mut _packet_ids_check:Vec<u8> = Vec::new();
+    _packet_ids_check = (&v[0..chunks_cnt as usize]).to_vec();
     let _debouncer = task::spawn(async move {
         let duration = Duration::from_millis(1200); // TODO: switch it back to 20ms once fully working
 
-        loop {
+        'outer: loop {
             match time::timeout(duration, debounce_rx.recv()).await {
                 Ok(Some(id)) => {
                     _packet_ids[id as usize] = 1;
                     eprintln!("{} id packet received:{:?}", id, _packet_ids);
                     if _packet_ids.iter().all(|x| x == &1u8) {
                         println!("All packets have been received, stop program ");
+                        break 'outer;
                     }
+
                 }
                 Ok(None) => {
                     eprintln!("Done: {:?}", _packet_ids);
@@ -225,7 +229,8 @@ async fn server() {
             }
         }
     });
-    loop {
+   // loop {
+   'outer: loop  {
         let thread_socket = arc.clone();
         let debounce_tx = debounce_tx.clone();
         let result = thread_socket.recv_from(&mut buf).await;
@@ -239,10 +244,14 @@ async fn server() {
                     memcpy(dst_ptr, &buf[AG_HEADER], len - AG_HEADER);
                 };
                 if id < chunks_cnt {
+                     _packet_ids_check[id as usize] = 1;
                     debounce_tx.send(id).await.expect("Unable to talk to debounce");
-                   // let a = debounce_rx.recv().unwrap();
-                 //   eprintln!("a value: {}", a);
+
+                    if  _packet_ids_check.iter().all(|x| x == &1u8) {
+                        break 'outer;
+                    }
                     // TODO: break if a return is specific value
+                   //  let a = debounce_rx.recv().await.unwrap(); eprintln!("a value: {}", a);
                 }
             }
             Err(_) => {
