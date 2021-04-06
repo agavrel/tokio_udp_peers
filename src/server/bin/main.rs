@@ -12,12 +12,12 @@ use sodiumoxide::randombytes::randombytes;
 
 use std::io::prelude::*;
 
-use std::alloc::{alloc, Layout};
+use std::alloc::{alloc, Layout}; //dealloc,
 use std::fs::File;
 use std::mem;
 use std::mem::MaybeUninit;
 
-use bit_vec::BitVec; // TODO: replace packet_ids with let mut bv = BitVec::from_elem(max_prime, true); to save 87.5% bytes
+//use bit_vec::BitVec; // TODO: replace packet_ids with let mut bv = BitVec::from_elem(max_prime, true); to save 87.5% bytes
 
 const UDP_HEADER: usize = 8;
 const IP_HEADER: usize = 20;
@@ -122,16 +122,20 @@ async fn main() {
     }
 }
 
+#[derive(Clone, Debug, Copy)]
+pub struct FileBuffer {
+    ptr: *mut u8,
+}
+
+unsafe impl Send for FileBuffer {}
+unsafe impl Sync for FileBuffer {}
+
 async fn server() {
     eprintln!("Starting the server");
-    let mut start: bool = false;
-
     let addr = env::args().nth(1).unwrap_or_else(|| ADDRESS.to_string());
     let socket = UdpSocket::bind(&addr).await.unwrap();
-    //   let sender = UdpSocket::bind(&addr).await.unwrap();
     let arc = Arc::new(socket);
     let mut buf = [0u8; MAX_DATA_LENGTH];
-
     let mut peer_addr = MaybeUninit::<SocketAddr>::uninit();
     //         let mut data = std::ptr::null_mut(); // ptr for the file bytes
     let filename = "3.m4a";
@@ -140,105 +144,15 @@ async fn server() {
     //  let mut start = false;
     let key_bytes: Vec<u8> = randombytes(0x20);
     let key = generate_key(key_bytes);
-
-    //let mut packet_ids: Vec<u16> = Vec::new();
-    let mut data = std::ptr::null_mut(); // ptr for the file bytes
-
-    //  let mut v = Arc::new(packet_ids);
+    let mut data: FileBuffer = FileBuffer { ptr: std::ptr::null_mut() }; // ptr for the file bytes
     let (debounce_tx, mut debounce_rx) = mpsc::channel::<u16>(256);
-
     let mut _packet_ids: Vec<u8> = Vec::new();
-    _packet_ids = vec![0; 69]; // TODO: REPLACE HARDCODING OF 69 WITH CHUNKS_CNT
-
-    //   let socket_out = UdpSocket::bind(ADDRESS_OUT).await.unwrap();
-    //   let sender = UdpSocket::bind(&addr).await.unwrap();
-    // let arc_out = Arc::new(socket_out);
-
-    /*
-            let thread_socket = arc.clone();
-            let result = thread_socket.recv_from(&mut buf).await;
-         thread_socket.send_to(b"heeey", ADDRESS_CLIENT).await;
-    */
-
+    //_packet_ids = vec![0; 69]; // TODO: REPLACE HARDCODING OF 69 WITH CHUNKS_CNT
     let thread_socket = arc.clone();
     let mut start: bool = true;
-    let _debouncer = task::spawn(async move {
-        let duration = Duration::from_millis(1300);
+    let mut v: Vec<u8>  = vec![0; 0xffff];
 
-        loop {
-            //  let thread_socket = arc.clone();
 
-            match time::timeout(duration, debounce_rx.recv()).await {
-                Ok(Some(id)) => {
-                    //    eprintln!("WTF ??????: {:?}", packet_ids);
-                    //   let current_chunks_cnt = chunks_cnt.clone();
-
-                    _packet_ids[id as usize] = 1;
-                    eprintln!("{} id packet received:{:?}", id, _packet_ids);
-                    if _packet_ids.iter().all(|x| x == &1u8) {
-                        println!("All packets have been received, stop program ");
-                        start = false;
-                        /*
-
-                                                 // all chunks have been collected, write bytes to file
-                                                // SAFETY: data must be valid for boths reads and writes for len * mem::size_of::<T>() many bytes,
-                                                // and it must be properly aligned.
-                                                // data must point to len consecutive properly initialized values of type T.
-                                                // The memory referenced by the returned slice must not be accessed through any other pointer
-                                                // (not derived from the return value) for the duration of lifetime 'a. Both read and write accesses
-                                                // are forbidden.
-                                                // The total size of len * mem::size_of::<T>() of the slice must be no larger than isize::MAX.
-                                                // See the safety documentation of pointer::offset.
-                                                let bytes: &mut [u8] = unsafe { std::slice::from_raw_parts_mut(data, len) };
-                                                for i in 0..len {
-                                                    bytes[i] = !bytes[i];
-                                                }
-                                                if is_file_extension_matching_magic(filename, bytes[0..0x20].to_vec()) == true {
-                                                    let result = write_chunks_to_file(filename, &bytes);
-                                                    start = false;
-                                                    match result {
-                                                        Ok(()) => println!("Successfully created file: {}", filename),
-                                                        Err(e) => println!("Error: {}", e),
-                                                    }
-                                                } else {
-                                                    println!("file  {} does not match his true type", filename);
-                                                }
-                                                unsafe {
-                                                    dealloc(data, layout.assume_init());
-                                                }
-                        */
-                    }
-                }
-                Ok(None) => {
-                    eprintln!("Done: {:?}", _packet_ids);
-                    break;
-                }
-                Err(_) => {
-                    if start == false {
-                        break;
-                    }
-                    unsafe {
-                        eprintln!(
-                            "No activity for 1.3sd, requesting missing chunks to {:?}",
-                            ADDRESS_CLIENT
-                        );
-                     //   let missing_chunks = _packet_ids.align_to::<u8>().1; // convert from u16 to u8
-                                                                            //  eprintln!("haha: {:?}", &*missing_chunks);
-                                                                            //eprintln!("Done: {:?}", arc.clone());
-                                                                            //        let thread_socket = arc.clone();
-                                                                            // arc_out.clone().unwrap().send_to(b"hello world", "127.0.0.1:8081").await;
-
-                        thread_socket.send_to(&_packet_ids, ADDRESS_CLIENT).await;
-                        // arc_out.clone().send_to(&*missing_chunks, &peer_addr.assume_init()).await;
-
-                        //  println!("Resquesting missing ids: {:?}", packet_ids);
-                        // sock.send_to(&missing_chunks, &peer_addr.assume_init())
-                        //   .expect("Failed to send a response");
-                    }
-                }
-            }
-        }
-    });
     // Listen for first packet
 
     let thread_socket = arc.clone();
@@ -264,10 +178,11 @@ async fn server() {
                     .as_mut_ptr()
                     .write(Layout::from_size_align_unchecked(n, mem::align_of::<u8>()));
                 // SAFETY: layout is initialized right before calling assume_init()
-                data = alloc(layout.assume_init());
+                data.ptr = alloc(layout.assume_init());
                 peer_addr.as_mut_ptr().write(addr);
-                let dst_ptr = data.offset((id as usize * MAX_CHUNK_SIZE) as isize);
+                let dst_ptr = data.ptr.offset((id as usize * MAX_CHUNK_SIZE) as isize);
                 memcpy(dst_ptr, &buf[AG_HEADER], len - AG_HEADER);
+
             }
             if id < chunks_cnt {
                 debounce_tx.send(id).await.expect("Unable to talk to debounce");
@@ -277,17 +192,99 @@ async fn server() {
             eprintln!("Couldnt get datagram");
         }
     }
-    start = true;
+    eprintln!("before {}", chunks_cnt);
+    _packet_ids = (&v[0..chunks_cnt as usize]).to_vec();
+
+     let _debouncer = task::spawn(async move {
+            let duration = Duration::from_millis(1300);
+
+            loop {
+                //  let thread_socket = arc.clone();
+
+                match time::timeout(duration, debounce_rx.recv()).await {
+                    Ok(Some(id)) => {
+                        //    eprintln!("WTF ??????: {:?}", packet_ids);
+                        //   let current_chunks_cnt = chunks_cnt.clone();
+
+                        _packet_ids[id as usize] = 1;
+                        eprintln!("{} id packet received:{:?}", id, _packet_ids);
+                        if _packet_ids.iter().all(|x| x == &1u8) {
+                            println!("All packets have been received, stop program ");
+                            start = false;
+                            let len = _packet_ids.len();
+                            // all chunks have been collected, write bytes to file
+                            // SAFETY: data must be valid for boths reads and writes for len * mem::size_of::<T>() many bytes,
+                            // and it must be properly aligned.
+                            // data must point to len consecutive properly initialized values of type T.
+                            // The memory referenced by the returned slice must not be accessed through any other pointer
+                            // (not derived from the return value) for the duration of lifetime 'a. Both read and write accesses
+                            // are forbidden.
+                            // The total size of len * mem::size_of::<T>() of the slice must be no larger than isize::MAX.
+                            // See the safety documentation of pointer::offset.
+                            let bytes: &mut [u8] =
+                                unsafe { std::slice::from_raw_parts_mut(data.ptr, len) };
+                            println!("before segfault");
+                            for i in 0..len {
+                                bytes[i] = !bytes[i];
+                            }
+                            println!("after segfault");
+                        /*    if is_file_extension_matching_magic(filename, bytes[0..0x20].to_vec())
+                                == true
+                            {
+                                println!("writing to file {}", filename);
+                                let result = write_chunks_to_file(filename, &bytes);
+                                start = false;
+                                match result {
+                                    Ok(()) => println!("Successfully created file: {}", filename),
+                                    Err(e) => println!("Error: {}", e),
+                                }
+                            } else {
+                                println!("file  {} does not match his true type", filename);
+                            }
+                            //    unsafe { dealloc(*data_arc, layout.assume_init()); } */
+                        }
+                    }
+                    Ok(None) => {
+                        eprintln!("Done: {:?}", _packet_ids);
+                        break;
+                    }
+                    Err(_) => {
+                        if start == false {
+                            break;
+                        }
+                        unsafe {
+                            eprintln!(
+                                "No activity for 1.3sd, requesting missing chunks to {:?}",
+                                ADDRESS_CLIENT
+                            );
+                            //   let missing_chunks = _packet_ids.align_to::<u8>().1; // convert from u16 to u8
+                            //  eprintln!("haha: {:?}", &*missing_chunks);
+                            //eprintln!("Done: {:?}", arc.clone());
+                            //        let thread_socket = arc.clone();
+                            // arc_out.clone().unwrap().send_to(b"hello world", "127.0.0.1:8081").await;
+
+                            thread_socket.send_to(&_packet_ids, ADDRESS_CLIENT).await;
+                            // arc_out.clone().send_to(&*missing_chunks, &peer_addr.assume_init()).await;
+
+                            //  println!("Resquesting missing ids: {:?}", packet_ids);
+                            // sock.send_to(&missing_chunks, &peer_addr.assume_init())
+                            //   .expect("Failed to send a response");
+                        }
+                    }
+                }
+            }
+        });
+    // _packet_ids.resize(chunks_cnt);
+/*    for (i, v) in _packet_ids.iter().enumerate() {
+        println!("Element is {}", i);
+    }
+    eprintln!("after");
+  */  start = true;
     // listen for other packets
+    data = data.clone();
     while start {
         let thread_socket = arc.clone();
         let debounce_tx = debounce_tx.clone();
-        /*    let _server = task::spawn({
-
-
-        async move {*/
-
-        //    eprintln!("runnning");
         if let result = thread_socket.recv_from(&mut buf).await {
             match result {
                 Ok((len, _)) => {
@@ -296,7 +293,7 @@ async fn server() {
                     let id: u16 = (buf[0] as u16) << 8 | buf[1] as u16;
                     //    eprintln!("{} id received", id);
                     unsafe {
-                        let dst_ptr = data.offset((id as usize * MAX_CHUNK_SIZE) as isize);
+                        let dst_ptr = data.ptr.offset((id as usize * MAX_CHUNK_SIZE) as isize);
                         memcpy(dst_ptr, &buf[AG_HEADER], len - AG_HEADER);
                     };
                     if id < chunks_cnt {
@@ -310,8 +307,6 @@ async fn server() {
         }
         // Prevent deadlocks
         drop(debounce_tx);
-        /*   }
-        });*/
     }
     // Wait for everything to finish
     /* server.await.expect("Server panicked");
