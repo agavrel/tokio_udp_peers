@@ -138,7 +138,7 @@ async fn server() {
     let mut buf = [0u8; MAX_DATA_LENGTH];
     let mut peer_addr = MaybeUninit::<SocketAddr>::uninit();
     //         let mut data = std::ptr::null_mut(); // ptr for the file bytes
-    let filename = "3.m4a";
+    let _filename = "3.m4a";
     let mut layout = MaybeUninit::<Layout>::uninit();
     let mut chunks_cnt: u16 = 0;
     let key_bytes: Vec<u8> = randombytes(0x20);
@@ -147,8 +147,7 @@ async fn server() {
     let (debounce_tx, mut debounce_rx) = mpsc::channel::<u16>(256);
     let mut _packet_ids: Vec<u8> = Vec::new();
     let thread_socket = arc.clone();
-    let mut start: bool = true;
-    let mut v: Vec<u8> = vec![0; 0xffff];
+    let v: Vec<u8> = vec![0; 0xffff];
 
     // Listen for first packet
     let result = thread_socket.recv_from(&mut buf).await;
@@ -204,10 +203,7 @@ async fn server() {
                     break;
                 }
                 Err(_) => {
-                    if start == false {
-                        break;
-                    }
-                    unsafe {
+
                         eprintln!(
                             "No activity for 1.3sd, requesting missing chunks to {:?}",
                             ADDRESS_CLIENT
@@ -224,7 +220,7 @@ async fn server() {
                         //  println!("Resquesting missing ids: {:?}", packet_ids);
                         // sock.send_to(&missing_chunks, &peer_addr.assume_init())
                         //   .expect("Failed to send a response");
-                    }
+
                 }
             }
         }
@@ -232,27 +228,28 @@ async fn server() {
     loop {
         let thread_socket = arc.clone();
         let debounce_tx = debounce_tx.clone();
-        if let result = thread_socket.recv_from(&mut buf).await {
-            match result {
-                Ok((len, _)) => {
-                    //eprintln!("Bytes len: {} from {}", len, addr);
-                    let id: u16 = (buf[0] as u16) << 8 | buf[1] as u16;
-                    //    eprintln!("{} id received", id);
-                    unsafe {
-                        let dst_ptr = data.ptr.offset((id as usize * MAX_CHUNK_SIZE) as isize);
-                        memcpy(dst_ptr, &buf[AG_HEADER], len - AG_HEADER);
-                    };
-                    if id < chunks_cnt {
-                        let a = debounce_tx.send(id).await.expect("Unable to talk to debounce");
-                        //eprintln!("a value: {}", a);
-                        // TODO: break if a return is specific value
-                    }
-                }
-                Err(_) => {
-                    eprintln!("Couldnt get datagram");
+        let result = thread_socket.recv_from(&mut buf).await;
+        match result {
+            Ok((len, _)) => {
+                //eprintln!("Bytes len: {} from {}", len, addr);
+                let id: u16 = (buf[0] as u16) << 8 | buf[1] as u16;
+                //    eprintln!("{} id received", id);
+                unsafe {
+                    let dst_ptr = data.ptr.offset((id as usize * MAX_CHUNK_SIZE) as isize);
+                    memcpy(dst_ptr, &buf[AG_HEADER], len - AG_HEADER);
+                };
+                if id < chunks_cnt {
+                    debounce_tx.send(id).await.expect("Unable to talk to debounce");
+                   // let a = debounce_rx.recv().unwrap();
+                 //   eprintln!("a value: {}", a);
+                    // TODO: break if a return is specific value
                 }
             }
+            Err(_) => {
+                eprintln!("Couldnt get datagram");
+            }
         }
+
         // Prevent deadlocks
         drop(debounce_tx);
     }
@@ -274,16 +271,15 @@ async fn server() {
         bytes[i] = !bytes[i];
     }
     println!("after segfault");
-    if is_file_extension_matching_magic(filename, bytes[0..0x20].to_vec()) == true {
-        println!("writing to file {}", filename);
-        let result = write_chunks_to_file(filename, &bytes);
-        start = false;
+    if is_file_extension_matching_magic(_filename, bytes[0..0x20].to_vec()) == true {
+        println!("writing to file {}", _filename);
+        let result = write_chunks_to_file(_filename, &bytes);
         match result {
-            Ok(()) => println!("Successfully created file: {}", filename),
+            Ok(()) => println!("Successfully created file: {}", _filename),
             Err(e) => println!("Error: {}", e),
         }
     } else {
-        println!("file  {} does not match his true type", filename);
+        println!("file  {} does not match his true type", _filename);
     }
     unsafe {
         dealloc(data.ptr, layout.assume_init());
@@ -302,7 +298,7 @@ async fn client() {
         .unwrap();
 
     // We use port 0 to let the operating system allocate an available port for us.
-    let local_addr: SocketAddr = if remote_addr.is_ipv4() {
+    let _local_addr: SocketAddr = if remote_addr.is_ipv4() {
         ADDRESS_CLIENT // "0.0.0.0:0" //
     } else {
         "[::]:0"
