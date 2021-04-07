@@ -40,6 +40,20 @@ const fn next_power_of_two_exponent(n: u32) -> u32 {
     return 32 - (n - 1).leading_zeros();
 }
 
+/*
+#[inline(always)]
+pub unsafe fn str_from_u8_nul_utf8_unchecked(utf8_src: &[u8]) -> &str {
+    // does Rust have a built-in 'memchr' equivalent?
+    let mut nul_range_end = 1_usize;
+    for b in utf8_src {
+        if *b == 0 {
+            break;
+        }
+        nul_range_end += 1;
+    }
+    return ::std::str::from_utf8_unchecked(&utf8_src[0..nul_range_end]);
+}
+*/
 #[inline(always)]
 fn write_chunks_to_file(filename: &str, bytes: &[u8]) -> io::Result<()> {
     let mut file = File::create(filename)?;
@@ -47,6 +61,7 @@ fn write_chunks_to_file(filename: &str, bytes: &[u8]) -> io::Result<()> {
 }
 
 // Thanks https://www.rosettacode.org/wiki/Extract_file_extension#Rust
+#[inline(always)]
 fn extension(filename: &str) -> &str {
     filename
         .rfind('.')
@@ -57,6 +72,7 @@ fn extension(filename: &str) -> &str {
 
 // https://en.wikipedia.org/wiki/List_of_file_signatures
 // NB: magic (number) means file signature
+#[inline(always)]
 fn is_file_extension_matching_magic(filename: &str, bytes: Vec<u8>) -> bool {
     const WILD: u8 = 0xFC; // unspecified byte, could be anything, just make sure
                            // that it is not one of the already used bytes among magic numbers
@@ -109,6 +125,10 @@ fn generate_key(random_bytes: Vec<u8>) -> Key {
 
 const ADDRESS: &str = "127.0.0.1:8080";
 const ADDRESS_CLIENT: &str = "127.0.0.1:8000";
+/*
+const ADDRESS: &str = "0.0.0.0:8080";
+const ADDRESS_CLIENT: &str = "147.115.89.228:8000";
+*/
 
 #[tokio::main]
 async fn main() {
@@ -135,7 +155,7 @@ async fn server() {
     let arc = Arc::new(socket);
     let mut buf = [0u8; MAX_DATA_LENGTH];
     let mut peer_addr = MaybeUninit::<SocketAddr>::uninit();
-    let _filename = "3.m4a";
+    let mut _filename = String::from("cpy_");
     let mut layout = MaybeUninit::<Layout>::uninit();
     let mut chunks_cnt: u16 = 0;
     let key_bytes: Vec<u8> = randombytes(0x20);
@@ -145,17 +165,26 @@ async fn server() {
     let mut _packet_ids: Vec<u8> = Vec::new();
     let thread_socket = arc.clone();
     let v: Vec<u8> = vec![0; 0xffff];
-    let mut total:usize = 0;
-  //  let arc_len = Arc::new(socket);
-    // Listen for first packet
+    let mut file_size: usize = 0;
+
+    // Listen for very first packet, first 8 bytes are file_size, then 2 bytes for packets count, then bytes reserved for filename
     let result = thread_socket.recv_from(&mut buf).await;
     match result {
         Ok((len, addr)) => {
             //eprintln!("Bytes len: {} from {}", len, addr);
-            chunks_cnt = (buf[2] as u16) << 8 | buf[3] as u16;
+            file_size = (buf[0] as usize) << 56
+                | (buf[1] as usize) << 48
+                | (buf[2] as usize) << 40
+                | (buf[3] as usize) << 32
+                | (buf[4] as usize) << 24
+                | (buf[5] as usize) << 16
+                | (buf[6] as usize) << 8
+                | buf[7] as usize;
+            chunks_cnt = (buf[8] as u16) << 8 | buf[9] as u16;
+            _filename.push_str(&String::from_utf8_lossy(&buf[10..len]));
             let n: usize = MAX_DATAGRAM_SIZE << next_power_of_two_exponent(chunks_cnt as u32);
             debug_assert_eq!(n.count_ones(), 1); // can check with this function that n is aligned on power of 2
-            //eprintln!("chunk count: {}", chunks_cnt);
+                                                 //eprintln!("chunk count: {}", chunks_cnt);
             let id: u16 = (buf[0] as u16) << 8 | buf[1] as u16;
             unsafe {
                 // SAFETY: layout.as_mut_ptr() is valid for writing and properly aligned
@@ -167,14 +196,6 @@ async fn server() {
                 // SAFETY: layout is initialized right before calling assume_init()
                 data.ptr = alloc(layout.assume_init());
                 peer_addr.as_mut_ptr().write(addr);
-                let dst_ptr = data.ptr.offset((id as usize * MAX_CHUNK_SIZE) as isize);
-
-                let len = len - AG_HEADER;
-                total += len;
-                memcpy(dst_ptr, &buf[AG_HEADER], len);
-            }
-            if id < chunks_cnt {
-                debounce_tx.send(id).await.expect("Unable to talk to debounce");
             }
         }
         Err(_) => {
@@ -182,41 +203,41 @@ async fn server() {
         }
     }
     _packet_ids = (&v[0..chunks_cnt as usize]).to_vec(); // crop to the desired size
-    let mut _packet_ids_check:Vec<u8> = Vec::new();
+    let mut _packet_ids_check: Vec<u8> = Vec::new();
     _packet_ids_check = (&v[0..chunks_cnt as usize]).to_vec();
     let mut _debouncer = task::spawn(async move {
-        let duration = Duration::from_millis(5); // TODO: switch it back to 20ms once fully working
+        let duration = Duration::from_millis(30); // TODO: switch it back to 20ms once fully working
 
-       loop {
+        loop {
             match time::timeout(duration, debounce_rx.recv()).await {
                 Ok(Some(id)) => {
                     _packet_ids[id as usize] = 1;
-              //      eprintln!("{} id packet received:{:?}", id, _packet_ids);
+                    //      eprintln!("{} id packet received:{:?}", id, _packet_ids);
                     if _packet_ids.iter().all(|x| x == &1u8) {
                         println!("All packets have been received, stop program ");
-                        break ;
+                        thread_socket.send_to(&_packet_ids, ADDRESS_CLIENT).await;
+                        break;
                     }
-
                 }
                 Ok(None) => {
                     eprintln!("Done: {:?}", _packet_ids);
                     break;
                 }
                 Err(_) => {
-                        eprintln!(
-                            "No activity for 1.3sd, requesting missing chunks to {:?}",
-                            ADDRESS_CLIENT
-                        );
-                        thread_socket.send_to(&_packet_ids, ADDRESS_CLIENT).await;
+                    eprintln!(
+                        "No activity for 1.3sd, requesting missing chunks to {:?}",
+                        ADDRESS_CLIENT
+                    );
+                    thread_socket.send_to(&_packet_ids, ADDRESS_CLIENT).await;
                 }
             }
         }
     });
-   // loop {
-   let thread_socket = arc.clone();
-  // let receiver = Arc::new(Mutex::new(debounce_rx));
-//Arc::clone(&receiver);
-   loop  {
+    // loop {
+    let thread_socket = arc.clone();
+    // let receiver = Arc::new(Mutex::new(debounce_rx));
+    //Arc::clone(&receiver);
+    loop {
         let debounce_tx = debounce_tx.clone();
         let result = tokio::select! {
           _done = &mut _debouncer => {
@@ -231,14 +252,13 @@ async fn server() {
                 //eprintln!("Bytes len: {} from {}", len, addr);
                 let id: u16 = (buf[0] as u16) << 8 | buf[1] as u16;
                 //    eprintln!("{} id received", id);
-                let len = len - AG_HEADER;
-                total += len;
+
                 unsafe {
                     let dst_ptr = data.ptr.offset((id as usize * MAX_CHUNK_SIZE) as isize);
-                    memcpy(dst_ptr, &buf[AG_HEADER], len);
+                    memcpy(dst_ptr, &buf[AG_HEADER], len - AG_HEADER);
                 };
                 if id < chunks_cnt {
-                     _packet_ids_check[id as usize] = 1;
+                    _packet_ids_check[id as usize] = 1;
                     debounce_tx.send(id).await.expect("Unable to talk to debounce");
                 }
             }
@@ -251,8 +271,8 @@ async fn server() {
         drop(debounce_tx);
     }
 
-// all chunks have been collected, write bytes to file
-// TODO: put in a separate function
+    // all chunks have been collected, write bytes to file
+    // TODO: put in a separate function
 
     // SAFETY: data must be valid for boths reads and writes for len * mem::size_of::<T>() many bytes,
     // and it must be properly aligned.
@@ -262,15 +282,15 @@ async fn server() {
     // are forbidden.
     // The total size of len * mem::size_of::<T>() of the slice must be no larger than isize::MAX.
     // See the safety documentation of pointer::offset.
-    let bytes: &mut [u8] = unsafe { std::slice::from_raw_parts_mut(data.ptr, total as usize) };
-    for i in 0..total as usize {
+    let bytes: &mut [u8] = unsafe { std::slice::from_raw_parts_mut(data.ptr, file_size as usize) };
+    for i in 0..file_size {
         bytes[i] = !bytes[i];
     }
-    if is_file_extension_matching_magic(_filename, bytes[0..0x20].to_vec()) == true {
-        let result = write_chunks_to_file(_filename, &bytes);
+    if is_file_extension_matching_magic(&_filename, bytes[0..0x20].to_vec()) == true {
+        let result = write_chunks_to_file(&_filename, &bytes);
         match result {
             Ok(()) => println!("Successfully created file: {}", _filename),
-            Err(e) => eprintln!("Error: {}", e),
+            Err(e) => eprintln!("Error trying to write file: {}", e),
         }
     } else {
         println!("file  {} does not match his true type", _filename);
@@ -279,7 +299,7 @@ async fn server() {
         dealloc(data.ptr, layout.assume_init());
     }
     // Wait for everything to finish
-//    _debouncer.await.expect("Debouncer panicked");
+    //    _debouncer.await.expect("Debouncer panicked");
 }
 
 async fn client() {

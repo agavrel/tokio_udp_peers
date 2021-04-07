@@ -17,7 +17,6 @@ pub fn get_chunks_from_file(
     mut filename: String,
     total_size: &mut usize,
 ) -> Result<Vec<Vec<u8>>, io::Error> {
-    filename.pop(); // get read of the trailing '\n' in user input.
     let mut file = std::fs::File::open(filename)?;
     let mut list_of_chunks = Vec::new();
 
@@ -51,12 +50,13 @@ fn get_stdin_data() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
 async fn main() -> Result<(), Box<dyn Error>> {
     let remote_addr: SocketAddr = env::args()
         .nth(1)
+        //   .unwrap_or_else(|| "147.115.89.228:8080".into())
         .unwrap_or_else(|| "127.0.0.1:8080".into()) // cargo run --example udp-client -- 127.0.0.1:8080
         .parse()?;
 
     // We use port 0 to let the operating system allocate an available port for us.
     let local_addr: SocketAddr = if remote_addr.is_ipv4() {
-        "127.0.0.1:8000" // "0.0.0.0:0" //
+        "127.0.0.1:8000" //  "0.0.0.0:0" "0.0.0.0:8000" //
     } else {
         "[::]:0"
     }
@@ -68,20 +68,40 @@ async fn main() -> Result<(), Box<dyn Error>> {
     //const MAX_DATAGRAM_SIZE: usize = 65_507;
     socket.connect(&remote_addr).await?;
 
-    let mut nb = 0; // total number of chunks to be sent
+    let mut chunks_cnt = 0; // total number of chunks to be sent
 
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).expect("Failed to read from stdin");
-    //      println!("{}", input);
-    // input = String::from_utf8_lossy(&buffer).to_string();
-    let mut total_size: usize = 0;
-    let result: Result<Vec<Vec<u8>>, io::Error> = get_chunks_from_file(input, &mut total_size); // set total_size at the same time
+    let mut filename = String::new();
+    io::stdin().read_line(&mut filename).expect("Failed to read from stdin");
+    filename.pop(); // get read of the trailing '\n' in user input.
+                    //      println!("{}", input);
+                    // input = String::from_utf8_lossy(&buffer).to_string();
+    let mut file_size: usize = 0;
+    let result: Result<Vec<Vec<u8>>, io::Error> =
+        get_chunks_from_file(filename.clone(), &mut file_size); // set total_size at the same time
     match result {
         Ok(ref chunks) => {
+            chunks_cnt = chunks.len() as u16;
+            let header_init: &mut [u8; 10] = &mut [
+                (file_size >> 56) as u8,
+                ((file_size >> 48) & 0xff) as u8,
+                ((file_size >> 40) & 0xff) as u8,
+                ((file_size >> 32) & 0xff) as u8,
+                ((file_size >> 24) & 0xff) as u8,
+                ((file_size >> 16) & 0xff) as u8,
+                ((file_size >> 8) & 0xff) as u8,
+                (file_size & 0xff) as u8,
+                ((chunks_cnt >> 8) & 0xff) as u8,
+                (chunks_cnt & 0xff) as u8,
+            ];
+
+            let data: Vec<u8> = [header_init.as_ref(), filename.as_ref()].concat();
+            println!("init data {:?} sent", data);
+            socket.send(&data).await?;
             // socket.send(input.as_bytes()).expect("Failed to write to server"); // send file
-            nb = chunks.len() as u16;
+
             //input.as_bytes();
-            let header: &mut [u8; 4] = &mut [0, 0, (nb >> 8) as u8, (nb & 0xff) as u8];
+            let header: &mut [u8; 4] =
+                &mut [0, 0, (chunks_cnt >> 8) as u8, (chunks_cnt & 0xff) as u8];
             let mut index: u16 = 0;
             for chunk in chunks.iter() {
                 header[0] = (index >> 8) as u8; // 0xFF..
@@ -119,10 +139,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
             //   let missing_indexes: Vec<u16> =
             //     (buffer[..len].align_to::<u16>().1).to_vec();
             println!("{:?}", &buffer[..len]);
-            let header2: &mut [u8; 4] = &mut [0, 0, (nb >> 8) as u8, (nb & 0xff) as u8];
+            let header2: &mut [u8; 4] =
+                &mut [0, 0, (chunks_cnt >> 8) as u8, (chunks_cnt & 0xff) as u8];
             for (i, missing_index) in buffer[..len].iter().enumerate() {
                 // let index = missing_index >> 8 | (missing_index & 0xff) << 8; // need to switch bytes because of little endian
+                //
                 if missing_index == &0u8 {
+                    //   was_missing = true;
                     // chunk was received
                     println!("Chunk {} not received by peer, resending...", i);
                     header2[0] = (i >> 8) as u8; // 0xFF..
