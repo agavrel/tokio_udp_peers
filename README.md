@@ -67,10 +67,10 @@ http://192.168.0.1/
 ---
 
 ## TODO List
-* <s>Add filename information and detect true fileType based on file magic number</s> 21/03/18 done
-* <s>Ability to encrypt data being sent</s> 24/03/18 done
-* <s>Make it asynchronous using Tokio</s> 29/03/18 done
-* Debounce the function requesting the missing indexes => WIP
+* <s>Add filename information and detect true fileType based on file magic number</s> 03/18/21 done
+* <s>Ability to encrypt data being sent</s> 03/24/21 done
+* <s>Make it asynchronous using Tokio</s> 03/29/21 done
+* <s>Debounce the function requesting the missing indexes</s> 04/07/21 done
 * Make it peer-to-peer (there is no client/server file, every client is a potential server and vis-versa)
 * build tracker server
 * Flutter Frontend for the program
