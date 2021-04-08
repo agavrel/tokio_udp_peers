@@ -163,7 +163,7 @@ async fn server() {
     let (debounce_tx, mut debounce_rx) = mpsc::channel::<u16>(256);
     let mut _packet_ids: Vec<u8> = Vec::new();
     let thread_socket = arc.clone();
-    let v: Vec<u8> = vec![0; 0xffff];
+    let v: Vec<u8> = vec![0; 0xffffffff];
     let mut file_size: usize = 0;
     let mut cipher_header = MaybeUninit::<Header>::uninit();
     let mut key_bytes: Vec<u8> = Vec::new();
@@ -302,9 +302,9 @@ async fn server() {
    // decrypt last message.
    let (mut bytes, _tag) = dec_stream.pull(&cipher_bytes, None).unwrap();
      eprintln!("file size: {}", bytes.len());
-    for i in 0..bytes.len() {
+  /*  for i in 0..bytes.len() {
         bytes[i] = !bytes[i];
-    }
+    } */
     if is_file_extension_matching_magic(&_filename, bytes[0..0x20].to_vec()) == true {
         let result = write_chunks_to_file(&_filename, &bytes);
         match result {

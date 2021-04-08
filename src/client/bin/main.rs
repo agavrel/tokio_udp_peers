@@ -50,11 +50,11 @@ pub fn get_bytes_from_file(
     let mut file = std::fs::File::open(filename)?;
     let mut bytes = Vec::new();
     *total_size = file.by_ref().read_to_end(&mut bytes)?;
-
+/*
     for i in 0..*total_size {
         bytes[i] = !bytes[i]; // neg
     }
-
+*/
     Ok(bytes)
 }
 
@@ -181,9 +181,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 println!("receiving  new message");
 
                 unsafe {
-                    //   let missing_indexes: Vec<u16> =
-                    //     (buffer[..len].align_to::<u16>().1).to_vec();
-                    println!("{:?}", &buffer[..len]);
+               //     println!("{:?}", &buffer[..len]);
                     let header2: &mut [u8; 4] =
                         &mut [0, 0, (chunks_cnt >> 8) as u8, (chunks_cnt & 0xff) as u8];
                     for (i, missing_index) in buffer[..len].iter().enumerate() {
@@ -192,7 +190,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         if missing_index == &0u8 {
                             //   was_missing = true;
                             // chunk was received
-                            println!("Chunk {} not received by peer, resending...", i);
+                          //  println!("Chunk {} not received by peer, resending...", i);
                             header2[0] = (i >> 8) as u8; // 0xFF..
                             header2[1] = (i & 0xff) as u8; // 0x..FF
                             let missing_chunk = &chunks[i];
