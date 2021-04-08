@@ -4,8 +4,12 @@ use std::error::Error;
 use std::io;
 use std::io::Read;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use tokio::net::UdpSocket;
+
+/// Encryption
+use sodiumoxide::crypto::secretstream::xchacha20poly1305::Key;
+use sodiumoxide::crypto::secretstream::{Stream, Tag};
+use sodiumoxide::randombytes::randombytes;
 
 const UDP_HEADER: usize = 8;
 const IP_HEADER: usize = 20;
@@ -14,7 +18,7 @@ const MAX_DATA_LENGTH: usize = (64 * 1024 - 1) - UDP_HEADER - IP_HEADER;
 const MAX_CHUNK_SIZE: usize = MAX_DATA_LENGTH - AG_HEADER;
 
 pub fn get_chunks_from_file(
-    mut filename: String,
+    filename: String,
     total_size: &mut usize,
 ) -> Result<Vec<Vec<u8>>, io::Error> {
     let mut file = std::fs::File::open(filename)?;
@@ -39,6 +43,26 @@ pub fn get_chunks_from_file(
     Ok(list_of_chunks)
 }
 
+pub fn get_bytes_from_file(
+    filename: String,
+    total_size: &mut usize,
+) -> Result<Vec<u8>, io::Error> {
+    let mut file = std::fs::File::open(filename)?;
+    let mut bytes = Vec::new();
+    *total_size = file.by_ref().read_to_end(&mut bytes)?;
+
+    for i in 0..*total_size {
+        bytes[i] = !bytes[i]; // neg
+    }
+
+    Ok(bytes)
+}
+
+fn generate_key(random_bytes: Vec<u8>) -> Key {
+    let option_key: Option<Key> = Key::from_slice(&random_bytes);
+    let key = option_key.unwrap();
+    return key;
+}
 /*
 fn get_stdin_data() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut buf = Vec::new();
@@ -68,7 +92,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     //const MAX_DATAGRAM_SIZE: usize = 65_507;
     socket.connect(&remote_addr).await?;
 
-    let mut chunks_cnt = 0; // total number of chunks to be sent
+    //let mut chunks_cnt = 0; // total number of chunks to be sent
 
     let mut filename = String::new();
     io::stdin().read_line(&mut filename).expect("Failed to read from stdin");
@@ -76,25 +100,49 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     //      println!("{}", input);
                     // input = String::from_utf8_lossy(&buffer).to_string();
     let mut file_size: usize = 0;
-    let result: Result<Vec<Vec<u8>>, io::Error> =
-        get_chunks_from_file(filename.clone(), &mut file_size); // set total_size at the same time
+
+    // get and encode file
+    let result: Result<Vec<u8>, io::Error> = get_bytes_from_file(filename.clone(), &mut file_size);
+     println!("file size: {}  \n", file_size);
     match result {
-        Ok(ref chunks) => {
-            chunks_cnt = chunks.len() as u16;
+        Ok(ref bytes) => {
+            let key_bytes = randombytes(0x20);
+            let key = generate_key(key_bytes.clone());
+            let (mut enc_stream, cipher_header) = Stream::init_push(&key).unwrap();
+            //println!("{:?}", header);
+            let cipher_bytes = enc_stream.push(&bytes, None, Tag::Final).unwrap();
+
+            let size = cipher_bytes.len();
+            println!("file size: {}  \n", size);
+            //    println!("{} {:?} \n", data.len(), &data[0..20]);
+            //    println!("{} {:?} \n", ciphertext1.len(), &ciphertext1[17..37]); // header seems to be 17 bytes length
+
+            let mut data: Vec<u8> = key_bytes.clone();
+            //  file_size =
+
+            //let chunks: Result<Vec<Vec<u8>> = make_chunks(ciphertext1, file_size);
+            data.extend(&cipher_header[..]);
+            let chunks: Vec<&[u8]> = cipher_bytes.chunks(MAX_CHUNK_SIZE).collect();
+            // separe file into chunks
+            /*     let result: Result<Vec<Vec<u8>>, io::Error> =
+                get_chunks_from_file(filename.clone(), &mut file_size); // set total_size at the same time
+            match result {
+                Ok(ref chunks) => { */
+            let chunks_cnt = chunks.len() as u16;
             let header_init: &mut [u8; 10] = &mut [
-                (file_size >> 56) as u8,
-                ((file_size >> 48) & 0xff) as u8,
-                ((file_size >> 40) & 0xff) as u8,
-                ((file_size >> 32) & 0xff) as u8,
-                ((file_size >> 24) & 0xff) as u8,
-                ((file_size >> 16) & 0xff) as u8,
-                ((file_size >> 8) & 0xff) as u8,
-                (file_size & 0xff) as u8,
+                (size >> 56) as u8,
+                ((size >> 48) & 0xff) as u8,
+                ((size >> 40) & 0xff) as u8,
+                ((size >> 32) & 0xff) as u8,
+                ((size >> 24) & 0xff) as u8,
+                ((size >> 16) & 0xff) as u8,
+                ((size >> 8) & 0xff) as u8,
+                (size & 0xff) as u8,
                 ((chunks_cnt >> 8) & 0xff) as u8,
                 (chunks_cnt & 0xff) as u8,
             ];
 
-            let data: Vec<u8> = [header_init.as_ref(), filename.as_ref()].concat();
+            data.extend([header_init.as_ref(), filename.as_ref()].concat());
             println!("init data {:?} sent", data);
             socket.send(&data).await?;
             // socket.send(input.as_bytes()).expect("Failed to write to server"); // send file
@@ -121,42 +169,45 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 index += 1;
             }
             //let mut buffer = [0u16; index];
+            /*      }
+                            Err(ref e) => eprintln!("Error: {}", e),
+                        };
+                          let chunks = result.unwrap();
+            */
+            let mut buffer = [0u8; MAX_DATA_LENGTH];
+
+            loop {
+                let len: usize = socket.recv(&mut buffer).await.unwrap();
+                println!("receiving  new message");
+
+                unsafe {
+                    //   let missing_indexes: Vec<u16> =
+                    //     (buffer[..len].align_to::<u16>().1).to_vec();
+                    println!("{:?}", &buffer[..len]);
+                    let header2: &mut [u8; 4] =
+                        &mut [0, 0, (chunks_cnt >> 8) as u8, (chunks_cnt & 0xff) as u8];
+                    for (i, missing_index) in buffer[..len].iter().enumerate() {
+                        // let index = missing_index >> 8 | (missing_index & 0xff) << 8; // need to switch bytes because of little endian
+                        //
+                        if missing_index == &0u8 {
+                            //   was_missing = true;
+                            // chunk was received
+                            println!("Chunk {} not received by peer, resending...", i);
+                            header2[0] = (i >> 8) as u8; // 0xFF..
+                            header2[1] = (i & 0xff) as u8; // 0x..FF
+                            let missing_chunk = &chunks[i];
+                            let data: Vec<u8> = [header2.as_ref(), &missing_chunk].concat();
+                            socket.send(&data).await?; //.expect("Failed to write to server");
+                        }
+                    }
+                }
+            }
         }
         Err(ref e) => eprintln!("Error: {}", e),
     };
     //println!("HELLLLO {}", socket.clone());
     // let len = socket.recv(&mut data).await?;
 
-    let chunks = result.unwrap();
-
-    let mut buffer = [0u8; MAX_DATA_LENGTH];
-
-    loop {
-        let len: usize = socket.recv(&mut buffer).await.unwrap();
-        println!("receiving  new message");
-
-        unsafe {
-            //   let missing_indexes: Vec<u16> =
-            //     (buffer[..len].align_to::<u16>().1).to_vec();
-            println!("{:?}", &buffer[..len]);
-            let header2: &mut [u8; 4] =
-                &mut [0, 0, (chunks_cnt >> 8) as u8, (chunks_cnt & 0xff) as u8];
-            for (i, missing_index) in buffer[..len].iter().enumerate() {
-                // let index = missing_index >> 8 | (missing_index & 0xff) << 8; // need to switch bytes because of little endian
-                //
-                if missing_index == &0u8 {
-                    //   was_missing = true;
-                    // chunk was received
-                    println!("Chunk {} not received by peer, resending...", i);
-                    header2[0] = (i >> 8) as u8; // 0xFF..
-                    header2[1] = (i & 0xff) as u8; // 0x..FF
-                    let missing_chunk = &chunks[i];
-                    let data: Vec<u8> = [header2.as_ref(), &missing_chunk].concat();
-                    socket.send(&data).await?; //.expect("Failed to write to server");
-                }
-            }
-        }
-    }
     //print!( "{}",str::from_utf8(&buffer).expect("Could not write buffer as string"));
     //  println!( "Chunk not received by server {:?}", &buffer);
 
@@ -177,5 +228,5 @@ async fn main() -> Result<(), Box<dyn Error>> {
             String::from_utf8_lossy(&data[..len])
         );
     */
-    //Ok(())
+    Ok(())
 }

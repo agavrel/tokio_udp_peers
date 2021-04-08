@@ -8,8 +8,8 @@ use std::{env, io};
 
 /// Encryption
 use sodiumoxide::crypto::secretstream::xchacha20poly1305::Key;
-use sodiumoxide::randombytes::randombytes;
-
+use sodiumoxide::crypto::secretstream::Stream;
+use sodiumoxide::crypto::secretstream::xchacha20poly1305::Header;
 use std::io::prelude::*;
 
 use std::alloc::{alloc, dealloc, Layout};
@@ -125,9 +125,10 @@ fn generate_key(random_bytes: Vec<u8>) -> Key {
 
 const ADDRESS: &str = "127.0.0.1:8080";
 const ADDRESS_CLIENT: &str = "127.0.0.1:8000";
+const CIPHER_STR:usize = 56; // 0x20 for key and 24 for header
 /*
 const ADDRESS: &str = "0.0.0.0:8080";
-const ADDRESS_CLIENT: &str = "147.115.89.228:8000";
+const ADDRESS_CLIENT: &str = "146.115.89.228:8000";
 */
 
 #[tokio::main]
@@ -158,34 +159,42 @@ async fn server() {
     let mut _filename = String::from("cpy_");
     let mut layout = MaybeUninit::<Layout>::uninit();
     let mut chunks_cnt: u16 = 0;
-    let key_bytes: Vec<u8> = randombytes(0x20);
-    let key = generate_key(key_bytes);
     let mut data: FileBuffer = FileBuffer { ptr: std::ptr::null_mut() }; // ptr for the file bytes
     let (debounce_tx, mut debounce_rx) = mpsc::channel::<u16>(256);
     let mut _packet_ids: Vec<u8> = Vec::new();
     let thread_socket = arc.clone();
     let v: Vec<u8> = vec![0; 0xffff];
     let mut file_size: usize = 0;
+    let mut cipher_header = MaybeUninit::<Header>::uninit();
+    let mut key_bytes: Vec<u8> = Vec::new();
 
     // Listen for very first packet, first 8 bytes are file_size, then 2 bytes for packets count, then bytes reserved for filename
     let result = thread_socket.recv_from(&mut buf).await;
     match result {
         Ok((len, addr)) => {
             //eprintln!("Bytes len: {} from {}", len, addr);
-            file_size = (buf[0] as usize) << 56
-                | (buf[1] as usize) << 48
-                | (buf[2] as usize) << 40
-                | (buf[3] as usize) << 32
-                | (buf[4] as usize) << 24
-                | (buf[5] as usize) << 16
-                | (buf[6] as usize) << 8
-                | buf[7] as usize;
-            chunks_cnt = (buf[8] as u16) << 8 | buf[9] as u16;
-            _filename.push_str(&String::from_utf8_lossy(&buf[10..len]));
+            key_bytes = buf[0..0x20].to_vec();
+           // cipher_header = ;
+
+            unsafe {
+             cipher_header.as_mut_ptr().write(Header::from_slice(&buf[32..56]).unwrap());
+             }
+            file_size = (buf[CIPHER_STR] as usize) << 56
+                | (buf[CIPHER_STR + 1] as usize) << 48
+                | (buf[CIPHER_STR + 2] as usize) << 40
+                | (buf[CIPHER_STR + 3] as usize) << 32
+                | (buf[CIPHER_STR + 4] as usize) << 24
+                | (buf[CIPHER_STR + 5] as usize) << 16
+                | (buf[CIPHER_STR + 6] as usize) << 8
+                | buf[CIPHER_STR + 7] as usize;
+
+            chunks_cnt = (buf[CIPHER_STR + 8] as u16) << 8 | buf[CIPHER_STR + 9] as u16;
+
+            _filename.push_str(&String::from_utf8_lossy(&buf[CIPHER_STR + 10..len]));
+
             let n: usize = MAX_DATAGRAM_SIZE << next_power_of_two_exponent(chunks_cnt as u32);
             debug_assert_eq!(n.count_ones(), 1); // can check with this function that n is aligned on power of 2
                                                  //eprintln!("chunk count: {}", chunks_cnt);
-            let id: u16 = (buf[0] as u16) << 8 | buf[1] as u16;
             unsafe {
                 // SAFETY: layout.as_mut_ptr() is valid for writing and properly aligned
                 // SAFETY: align_of<u8>() is nonzero and a power of two thanks to previous function
@@ -215,7 +224,7 @@ async fn server() {
                     //      eprintln!("{} id packet received:{:?}", id, _packet_ids);
                     if _packet_ids.iter().all(|x| x == &1u8) {
                         println!("All packets have been received, stop program ");
-                        thread_socket.send_to(&_packet_ids, ADDRESS_CLIENT).await;
+                        let _res = thread_socket.send_to(&_packet_ids, ADDRESS_CLIENT).await;
                         break;
                     }
                 }
@@ -228,7 +237,7 @@ async fn server() {
                         "No activity for 1.3sd, requesting missing chunks to {:?}",
                         ADDRESS_CLIENT
                     );
-                    thread_socket.send_to(&_packet_ids, ADDRESS_CLIENT).await;
+                    let _res = thread_socket.send_to(&_packet_ids, ADDRESS_CLIENT).await;
                 }
             }
         }
@@ -282,8 +291,18 @@ async fn server() {
     // are forbidden.
     // The total size of len * mem::size_of::<T>() of the slice must be no larger than isize::MAX.
     // See the safety documentation of pointer::offset.
-    let bytes: &mut [u8] = unsafe { std::slice::from_raw_parts_mut(data.ptr, file_size as usize) };
-    for i in 0..file_size {
+    let cipher_bytes: &mut [u8] = unsafe { std::slice::from_raw_parts_mut(data.ptr, file_size as usize) };
+    // initialize decrypt secret stream
+
+    let mut dec_stream;
+    let key = generate_key(key_bytes);
+    unsafe {
+        dec_stream = Stream::init_pull(&cipher_header.assume_init(), &key).unwrap();
+    }
+   // decrypt last message.
+   let (mut bytes, _tag) = dec_stream.pull(&cipher_bytes, None).unwrap();
+     eprintln!("file size: {}", bytes.len());
+    for i in 0..bytes.len() {
         bytes[i] = !bytes[i];
     }
     if is_file_extension_matching_magic(&_filename, bytes[0..0x20].to_vec()) == true {
