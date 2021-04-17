@@ -122,14 +122,14 @@ fn generate_key(random_bytes: Vec<u8>) -> Key {
     let key = option_key.unwrap();
     return key;
 }
-
-const ADDRESS: &str = "127.0.0.1:8080";
-const ADDRESS_CLIENT: &str = "127.0.0.1:8000";
-const CIPHER_STR:usize = 56; // 0x20 for key and 24 for header
 /*
+const ADDRESS: &str = "127.0.0.1:8080";
+const ADDRESS_CLIENT: &str = "127.0.0.1:8000"; */
+const CIPHER_STR:usize = 56; // 0x20 for key and 24 for header
+
 const ADDRESS: &str = "0.0.0.0:8080";
 const ADDRESS_CLIENT: &str = "146.115.89.228:8000";
-*/
+
 
 #[tokio::main]
 async fn main() {
@@ -215,7 +215,7 @@ async fn server() {
     let mut _packet_ids_check: Vec<u8> = Vec::new();
     _packet_ids_check = (&v[0..chunks_cnt as usize]).to_vec();
     let mut _debouncer = task::spawn(async move {
-        let duration = Duration::from_millis(30); // TODO: switch it back to 20ms once fully working
+        let duration = Duration::from_millis(500); // TODO: switch it back to 20ms once fully working
 
         loop {
             match time::timeout(duration, debounce_rx.recv()).await {

@@ -74,13 +74,13 @@ fn get_stdin_data() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
 async fn main() -> Result<(), Box<dyn Error>> {
     let remote_addr: SocketAddr = env::args()
         .nth(1)
-        //   .unwrap_or_else(|| "147.115.89.228:8080".into())
-        .unwrap_or_else(|| "127.0.0.1:8080".into()) // cargo run --example udp-client -- 127.0.0.1:8080
+          .unwrap_or_else(|| "146.115.89.228:8080".into())
+      //   .unwrap_or_else(|| "127.0.0.1:8080".into()) // cargo run --example udp-client -- 127.0.0.1:8080
         .parse()?;
 
     // We use port 0 to let the operating system allocate an available port for us.
     let local_addr: SocketAddr = if remote_addr.is_ipv4() {
-        "127.0.0.1:8000" //  "0.0.0.0:0" "0.0.0.0:8000" //
+        "0.0.0.0:8000" //"127.0.0.1:8000" //  "0.0.0.0:0"
     } else {
         "[::]:0"
     }
