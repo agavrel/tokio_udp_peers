@@ -20,6 +20,9 @@ path = "test.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+image = "0.23.14"
+qrcode = "0.12.0"
+rqrr = "0.3.2"
 bit-vec = "0.6.3"
 rand = "0.8.0"
 net2 = {version = "0.2.37"}
